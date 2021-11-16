@@ -1,0 +1,5 @@
+manifest_version: 1
+name: HNSWPostgresIndexer
+description: A complete indexer based on HNSW and PostgreSQL
+url: https://github.com/jina-ai/executor-hnsw-postgres
+keywords: [hnswlib, postgres, indexer, ann, hnsw]
