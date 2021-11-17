@@ -9,7 +9,7 @@ compose_yml = os.path.abspath(os.path.join(cur_dir, '..', 'docker-compose.yml'))
 
 
 def test_basic():
-    indexer = HNSWPostgresIndexer(dry_run=True)
+    indexer = HNSWPostgresIndexer(dry_run=True, startup_sync=False)
     assert isinstance(indexer._vec_indexer, HnswlibSearcher)
     assert isinstance(indexer._kv_indexer, PostgreSQLStorage)
     assert indexer._init_kwargs
