@@ -154,9 +154,12 @@ class HNSWPostgresIndexer(Executor):
         status = {
             'psql_docs': psql_docs,
             'hnsw_docs': hnsw_docs,
-            'last_sync': last_sync
+            'last_sync': last_sync,
+            'pea_id': self.runtime_args.pea_id
         }
-        return status
+        return DocumentArray([
+            Document(tags=status)
+        ])
 
     @requests(on='/search')
     def search(self, docs: 'DocumentArray', parameters: Dict = None, **kwargs):
