@@ -6,6 +6,10 @@ It combines the reliability of PostgreSQL with the speed and efficiency of the H
 
 It thus provides all the CRUD operations expected of a database system, while also offering fast and reliable vector lookup.
 
+**Requires** a running PostgreSQL database service. For quick testing, you can run a containerized version locally with:
+
+`docker run -e POSTGRES_PASSWORD=123456  -p 127.0.0.1:5432:5432/tcp postgres:13.2`
+
 ## Syncing between PSQL and HNSW
 
 By default, all data is stored in a PSQL database (as defined in the arguments). 

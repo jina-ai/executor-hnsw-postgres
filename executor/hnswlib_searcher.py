@@ -49,7 +49,8 @@ class HnswlibSearcher:
         :param dim: The dimensionality of vectors to index
         :param max_elements: Maximum number of elements (vectors) to index
         :param ef_construction: The construction time/accuracy trade-off
-        :param ef_query: The query time accuracy/speed trade-off
+        :param ef_query: The query time accuracy/speed trade-off. High is more
+            accurate but slower
         :param max_connection: The maximum number of outgoing connections in the
             graph (the "M" parameter)
         :param dump_path: The path to the directory from where to load, and where to

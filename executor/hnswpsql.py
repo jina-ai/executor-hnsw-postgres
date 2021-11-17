@@ -1,3 +1,6 @@
+__copyright__ = "Copyright (c) 2021 Jina AI Limited. All rights reserved."
+__license__ = "Apache-2.0"
+
 import copy
 from datetime import datetime
 from typing import Optional, Tuple, Dict
@@ -12,8 +15,10 @@ from .postgres_indexer import PostgreSQLStorage
 
 class HNSWPostgresIndexer(Executor):
     """
-    TODO
+    Production-ready, scalable Indexer for the Jina neural search framework.
 
+    Combines the reliability of PostgreSQL with the speed and efficiency of the
+    HNSWlib nearest neighbor library.
     """
 
     def __init__(
@@ -22,9 +27,40 @@ class HNSWPostgresIndexer(Executor):
         """
         :param startup_sync: whether to sync from PSQL into HNSW on start-up
         :param total_shards: the total nr of shards that this shard is part of.
+        :param limit: (HNSW) Number of results to get for each query document in
+        search
+        :param metric: (HNSW) Distance metric type. Can be 'euclidean',
+        'inner_product', or 'cosine'
+        :param dim: (HNSW) dimensionality of vectors to index
+        :param max_elements: (HNSW) maximum number of elements (vectors) to index
+        :param ef_construction: (HNSW) construction time/accuracy trade-off
+        :param ef_query: (HNSW) query time accuracy/speed trade-off. High is more
+        accurate but slower
+        :param max_connection: (HNSW) The maximum number of outgoing connections in
+        the graph (the "M" parameter)
+        :param is_distance: (HNSW) if distance metric needs to be reinterpreted as
+        similarity
+        :param last_timestamp: (HNSW) the last time we synced into this HNSW index
+        :param traversal_paths: (PSQL) default traversal paths on docs
+        (used for indexing, delete and update), e.g. ['r'], ['c']
+        :param hostname: (PSQL) hostname of the machine
+        :param port: (PSQL) the port
+        :param username: (PSQL) the username to authenticate
+        :param password: (PSQL) the password to authenticate
+        :param database: (PSQL) the database
+        :param table: (PSQL) the table to use
+        :param return_embeddings: (PSQL) whether to return embeddings on
+        search
+        :param dry_run: (PSQL) If True, no database connection will be built
+        :param partitions: (PSQL) the number of shards to distribute
+         the data (used when syncing into HNSW)
 
-            NOTE: `total_shards` is REQUIRED in k8s, since there
-            `runtime_args.parallel` is always 1
+        NOTE:
+
+        - `total_shards` is REQUIRED in k8s, since there
+        `runtime_args.parallel` is always 1
+        - some arguments are passed to the inner classes. They are documented
+        here for easier reference
         """
         super().__init__(**kwargs)
         self.logger = JinaLogger(getattr(self.metas, 'name', self.__class__.__name__))
@@ -61,7 +97,8 @@ class HNSWPostgresIndexer(Executor):
 
         :param parameters: dictionary with options for sync
 
-        Keys accepted:
+            Keys accepted:
+
             - 'rebuild' (bool): whether to rebuild HNSW or do
             incremental syncing
             - 'timestamp' (str): ISO-formatted timestamp string. Time
@@ -107,23 +144,41 @@ class HNSWPostgresIndexer(Executor):
         """Index new documents
 
         NOTE: PSQL has a uniqueness constraint on ID
+
+        :param docs: the Documents to index
+        :param parameters: dictionary with options for indexing
+
+        Keys accepted:
+
+            - 'traversal_paths' (list): traversal path for the docs
         """
         self._kv_indexer.add(docs, parameters, **kwargs)
 
     @requests(on='/update')
     def update(self, docs: Optional[DocumentArray], parameters: Dict, **kwargs):
-        """
-        Update documents in PSQL, based on id
+        """Update existing documents
+
+        :param docs: the Documents to update
+        :param parameters: dictionary with options for updating
+
+        Keys accepted:
+
+            - 'traversal_paths' (list): traversal path for the docs
         """
         self._kv_indexer.update(docs, parameters, **kwargs)
 
     @requests(on='/delete')
     def delete(self, docs: Optional[DocumentArray], parameters: Dict, **kwargs):
-        """
-        Delete docs from PSQL, based on id.
+        """Update existing documents
 
-        By default, it will be a soft delete, where the entry is left in the DB,
-        but its data will be set to None
+        :param docs: the Documents to update
+        :param parameters: dictionary with options for updating
+
+        Keys accepted:
+
+            - 'traversal_paths' (list): traversal path for the docs
+            - 'soft_delete' (bool, default `True`): whether to perform soft delete
+            (doc is marked as empty but still exists in db, for retrieval purposes)
         """
         if 'soft_delete' not in parameters:
             parameters['soft_delete'] = True
@@ -143,6 +198,9 @@ class HNSWPostgresIndexer(Executor):
     def status(self, **kwargs):
         """
         Get information on status of this Indexer inside a Document's tags
+
+        :return: DocumentArray with one Document with tags 'psql_docs', 'hnsw_docs',
+        'last_sync', 'pea_id'
         """
         psql_docs = self._kv_indexer.size
         hnsw_docs = self._vec_indexer.size
@@ -158,22 +216,26 @@ class HNSWPostgresIndexer(Executor):
 
     @requests(on='/search')
     def search(self, docs: 'DocumentArray', parameters: Dict = None, **kwargs):
-        """
-        Search the vec embeddings in Faiss and then lookup the metadata in PSQL
+        """Search the vec embeddings in HNSW and then lookup the metadata in PSQL
 
         :param docs: `Document` with `.embedding` the same shape as the
-            `Documents` stored in the `FaissSearcher`. The ids of the `Documents`
-            stored in `FaissSearcher` need to exist in the `PostgreSQLStorage`.
+            `Documents` stored in the `HNSW` index. The ids of the `Documents`
+            stored in `HNSW` need to exist in the PSQL.
             Otherwise you will not get back the original metadata.
-        :param parameters: dictionary to define the ``traversal_paths``. This will
-            override the default parameters set at init.
+        :param parameters: dictionary for parameters for the search operation
 
-        :return: The `FaissSearcher` attaches matches to the `Documents` sent as
-        inputs,
-            with the id of the match, and its embedding. Then, the `PostgreSQLStorage`
-            retrieves the full metadata (original text or image blob) and attaches
-            those to the Document. You receive back the full Document.
 
+            - 'traversal_paths' (list[str]): traversal path for the docs
+            - 'limit' (int): nr of matches to get per Document
+            - 'ef_query' (int): query time accuracy/speed trade-off. High is more
+            accurate but slower
+
+        :return: The `HNSWSearcher` attaches matches to the `Documents` sent as
+            inputs with the id of the match, and its embedding.
+            Then, the `PostgreSQLStorage` retrieves the full metadata
+            (original text or image blob) and attaches
+            those to the Document. You receive back the full Documents as matches
+            to your search Documents.
         """
         if self._kv_indexer and self._vec_indexer:
             self._vec_indexer.search(docs, parameters)

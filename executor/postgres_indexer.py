@@ -29,10 +29,10 @@ class PostgreSQLStorage:
         database: str = 'postgres',
         table: str = 'default_table',
         max_connections=5,
-        default_traversal_paths: List[str] = ['r'],
-        default_return_embeddings: bool = True,
+        traversal_paths: List[str] = ['r'],
+        return_embeddings: bool = True,
         dry_run: bool = False,
-        virtual_shards: int = 128,
+        partitions: int = 128,
         dump_dtype: type = np.float64,
         *args,
         **kwargs,
@@ -46,12 +46,13 @@ class PostgreSQLStorage:
         :param password: the password to authenticate
         :param database: the database name
         :param table: the table name to use
-        :param default_return_embeddings: whether to return embeddings on search or not
+        :param return_embeddings: whether to return embeddings on search or
+        not
         :param dry_run: If True, no database connection will be build.
-        :param virtual_shards: the number of shards to distribute
+        :param partitions: the number of shards to distribute
          the data (used when rolling update on Searcher side)
         """
-        self.default_traversal_paths = default_traversal_paths
+        self.default_traversal_paths = traversal_paths
         self.hostname = hostname
         self.port = port
         self.username = username
@@ -59,7 +60,7 @@ class PostgreSQLStorage:
         self.database = database
         self.table = table
         self.logger = JinaLogger('psql_indexer')
-        self.virtual_shards = virtual_shards
+        self.partitions = partitions
         self.handler = PostgreSQLHandler(
             hostname=self.hostname,
             port=self.port,
@@ -69,10 +70,10 @@ class PostgreSQLStorage:
             table=self.table,
             max_connections=max_connections,
             dry_run=dry_run,
-            partitions=virtual_shards,
+            partitions=partitions,
             dump_dtype=dump_dtype,
         )
-        self.default_return_embeddings = default_return_embeddings
+        self.default_return_embeddings = return_embeddings
 
     @property
     def dump_dtype(self):
@@ -219,7 +220,7 @@ class PostgreSQLStorage:
         """
         if self.snapshot_size > 0:
             shards_to_get = self._vshards_to_get(
-                shard_id, total_shards, self.virtual_shards
+                shard_id, total_shards, self.partitions
             )
 
             with self.handler as postgres_handler:
@@ -257,7 +258,7 @@ class PostgreSQLStorage:
         if self.size > 0:
 
             shards_to_get = self._vshards_to_get(
-                shard_id, total_shards, self.virtual_shards
+                shard_id, total_shards, self.partitions
             )
 
             with self.handler as postgres_handler:
