@@ -15,7 +15,6 @@ METRIC = 'cosine'
 
 
 class MatchMerger(Executor):
-
     @requests(on='/search')
     def merge(self, docs_matrix, parameters: Dict, **kwargs):
         if docs_matrix:
@@ -32,10 +31,9 @@ class MatchMerger(Executor):
                 top_k = int(top_k)
 
             for doc in results.values():
-                doc.matches = \
-                    sorted(doc.matches,
-                           key=lambda m: m.scores[METRIC].value) \
-                        [:top_k]
+                doc.matches = sorted(doc.matches, key=lambda m: m.scores[METRIC].value)[
+                    :top_k
+                ]
 
             docs = DocumentArray(list(results.values()))
             return docs
@@ -49,20 +47,20 @@ def test_basic_integration(docker_compose, get_documents):
 
     f = Flow().add(
         uses=HNSWPostgresIndexer,
-        uses_with={
-            'dim': emb_size
-        },
+        uses_with={'dim': emb_size},
         parallel=3,
         # this will lead to warnings on PSQL for clashing ids
         # but required in order for the query request is sent
         # to all the shards
         polling='all',
-        uses_after=MatchMerger
+        uses_after=MatchMerger,
     )
 
     with f:
         # test for empty sync from psql
-        f.post('/sync', )
+        f.post(
+            '/sync',
+        )
         result = f.post('/status', None, return_results=True)
         result_docs = result[0].docs
         first_hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
@@ -70,20 +68,21 @@ def test_basic_integration(docker_compose, get_documents):
         assert int(first_hnsw_docs) == 0
 
         status = result_docs[0].tags['last_sync']
-        last_sync_timestamp = datetime.datetime.fromisoformat(
-            status
-        )
+        last_sync_timestamp = datetime.datetime.fromisoformat(status)
 
         f.post('/index', docs)
 
         search_docs = DocumentArray(
-            get_documents(index_start=len(docs), emb_size=emb_size))
+            get_documents(index_start=len(docs), emb_size=emb_size)
+        )
 
         result = f.post('/search', search_docs, return_results=True)
         search_docs = result[0].docs
         assert len(search_docs[0].matches) == 0
 
-        f.post('/sync', )
+        f.post(
+            '/sync',
+        )
         result = f.post('/search', search_docs, return_results=True)
         search_docs = result[0].docs
         assert len(search_docs[0].matches) > 0
@@ -95,9 +94,7 @@ def test_basic_integration(docker_compose, get_documents):
         assert int(new_hnsw_docs) == len(docs)
         assert int(result_docs[0].tags['psql_docs']) == len(docs)
         status = result_docs[0].tags['last_sync']
-        last_sync = datetime.datetime.fromisoformat(
-            status
-        )
+        last_sync = datetime.datetime.fromisoformat(status)
         assert last_sync > last_sync_timestamp
 
 
@@ -110,7 +107,6 @@ def test_replicas_integration(docker_compose, get_documents):
 
     uses_with = {
         'dim': emb_size,
-        'startup_sync': False,
         'limit': LIMIT,
     }
 
@@ -124,14 +120,15 @@ def test_replicas_integration(docker_compose, get_documents):
         # but required in order for the query request is sent
         # to all the shards
         polling='all',
-        uses_after=MatchMerger
+        uses_after=MatchMerger,
     )
 
     with f:
         f.post('/index', docs)
 
         search_docs = DocumentArray(
-            get_documents(index_start=len(docs), emb_size=emb_size))
+            get_documents(index_start=len(docs), emb_size=emb_size)
+        )
 
         result = f.post('/search', search_docs, return_results=True)
         search_docs = result[0].docs
@@ -140,10 +137,7 @@ def test_replicas_integration(docker_compose, get_documents):
         uses_with = copy.deepcopy(uses_with)
         uses_with['startup_sync'] = True
 
-        f.rolling_update(
-            pod_name='indexer',
-            uses_with=uses_with
-        )
+        f.rolling_update(pod_name='indexer', uses_with=uses_with)
         result = f.post('/search', search_docs, return_results=True)
         search_docs = result[0].docs
         assert len(search_docs[0].matches) == NR_SHARDS * LIMIT

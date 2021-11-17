@@ -29,4 +29,5 @@ def get_documents():
             d.id = f'aa{i}'  # to test it supports non-int ids
             d.embedding = random_batch[i - index_start]
             yield d
+
     return get_documents_inner

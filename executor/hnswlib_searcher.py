@@ -18,7 +18,8 @@ GENERATOR_DELTA = Generator[
 HNSW_TYPE = np.float32
 DEFAULT_METRIC = 'cosine'
 
-class HnswlibSearcher():
+
+class HnswlibSearcher:
     """Hnswlib powered vector indexer.
 
     This indexer uses the HNSW algorithm to index and search for vectors. It does not
@@ -26,20 +27,20 @@ class HnswlibSearcher():
     """
 
     def __init__(
-            self,
-            limit: int = 10,
-            metric: str = DEFAULT_METRIC,
-            dim: int = 0,
-            max_elements: int = 1_000_000,
-            ef_construction: int = 400,
-            ef_query: int = 50,
-            max_connection: int = 64,
-            dump_path: Optional[str] = None,
-            traversal_paths: Iterable[str] = ('r',),
-            is_distance: bool = True,
-            last_timestamp: datetime = datetime.min,
-            *args,
-            **kwargs,
+        self,
+        limit: int = 10,
+        metric: str = DEFAULT_METRIC,
+        dim: int = 0,
+        max_elements: int = 1_000_000,
+        ef_construction: int = 400,
+        ef_query: int = 50,
+        max_connection: int = 64,
+        dump_path: Optional[str] = None,
+        traversal_paths: Iterable[str] = ('r',),
+        is_distance: bool = True,
+        last_timestamp: datetime = datetime.min,
+        *args,
+        **kwargs,
     ):
         """
         :param limit: Number of results to get for each query document in search
@@ -105,8 +106,7 @@ class HnswlibSearcher():
         self._ids_to_inds = bidict()
 
     def search(
-            self, docs: Optional[DocumentArray] = None, parameters: Dict = {},
-            **kwargs
+        self, docs: Optional[DocumentArray] = None, parameters: Dict = {}, **kwargs
     ):
         """Attach matches to the Documents in `docs`, each match containing only the
         `id` of the matched document and the `score`.
@@ -163,8 +163,7 @@ class HnswlibSearcher():
                 docs_search[i].matches.append(match)
 
     def index(
-            self, docs: Optional[DocumentArray] = None, parameters: Dict = {},
-            **kwargs
+        self, docs: Optional[DocumentArray] = None, parameters: Dict = {}, **kwargs
     ):
         """Index the Documents' embeddings. If the document is already in index, it
         will be updated.
@@ -206,8 +205,7 @@ class HnswlibSearcher():
         self._ids_to_inds.update({_id: ind for _id, ind in zip(ids, doc_inds)})
 
     def update(
-            self, docs: Optional[DocumentArray] = None, parameters: Dict = {},
-            **kwargs
+        self, docs: Optional[DocumentArray] = None, parameters: Dict = {}, **kwargs
     ):
         """Update the Documents' embeddings. If a Document is not already present in
         the index, it will get ignored, and a warning will be raised.
@@ -341,21 +339,13 @@ class HnswlibSearcher():
                     continue
                 vec = vec_array.astype(HNSW_TYPE)
 
-                da = DocumentArray([
-                    Document(
-                        id=doc_id,
-                        embedding=vec
-                    )]
-                )
+                da = DocumentArray([Document(id=doc_id, embedding=vec)])
                 self.index(da)
             elif vec_array is None:
                 self.delete({'ids': [doc_id]})
             else:
                 vec = vec_array.reshape(1, -1).astype(HNSW_TYPE)
-                da = DocumentArray(Document(
-                    id=doc_id,
-                    embedding=vec
-                ))
+                da = DocumentArray(Document(id=doc_id, embedding=vec))
                 self.update(da)
 
         self.last_timestamp = datetime.now()

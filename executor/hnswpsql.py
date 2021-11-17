@@ -16,10 +16,9 @@ class HNSWPostgresIndexer(Executor):
 
     """
 
-    def __init__(self,
-                 total_shards: Optional[int] = None,
-                 startup_sync: bool = True,
-                 **kwargs):
+    def __init__(
+        self, total_shards: Optional[int] = None, startup_sync: bool = True, **kwargs
+    ):
         """
         :param startup_sync: whether to sync from PSQL into HNSW on start-up
         :param total_shards: the total nr of shards that this shard is part of.
@@ -96,8 +95,9 @@ class HNSWPostgresIndexer(Executor):
         )
         self._vec_indexer.sync(iterator)
 
-    def _init_executors(self, _init_kwargs) -> Tuple[PostgreSQLStorage,
-                                                     HnswlibSearcher]:
+    def _init_executors(
+        self, _init_kwargs
+    ) -> Tuple[PostgreSQLStorage, HnswlibSearcher]:
         kv_indexer = PostgreSQLStorage(dump_dtype=np.float32, **_init_kwargs)
         vec_indexer = HnswlibSearcher(**_init_kwargs)
         return kv_indexer, vec_indexer
@@ -152,11 +152,9 @@ class HNSWPostgresIndexer(Executor):
             'psql_docs': psql_docs,
             'hnsw_docs': hnsw_docs,
             'last_sync': last_sync,
-            'pea_id': self.runtime_args.pea_id
+            'pea_id': self.runtime_args.pea_id,
         }
-        return DocumentArray([
-            Document(tags=status)
-        ])
+        return DocumentArray([Document(tags=status)])
 
     @requests(on='/search')
     def search(self, docs: 'DocumentArray', parameters: Dict = None, **kwargs):

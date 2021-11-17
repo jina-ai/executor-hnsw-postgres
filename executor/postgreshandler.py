@@ -42,19 +42,19 @@ class PostgreSQLHandler:
     """
 
     def __init__(
-            self,
-            hostname: str = '127.0.0.1',
-            port: int = 5432,
-            username: str = 'default_name',
-            password: str = 'default_pwd',
-            database: str = 'postgres',
-            table: Optional[str] = 'default_table',
-            max_connections: int = 5,
-            dump_dtype: type = np.float64,
-            dry_run: bool = False,
-            partitions: int = 128,
-            *args,
-            **kwargs,
+        self,
+        hostname: str = '127.0.0.1',
+        port: int = 5432,
+        username: str = 'default_name',
+        password: str = 'default_pwd',
+        database: str = 'postgres',
+        table: Optional[str] = 'default_table',
+        max_connections: int = 5,
+        dump_dtype: type = np.float64,
+        dry_run: bool = False,
+        partitions: int = 128,
+        *args,
+        **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.logger = JinaLogger('psq_handler')
@@ -385,7 +385,7 @@ class PostgreSQLHandler:
         self.connection.commit()
 
     def get_generator(
-            self, include_metas=True
+        self, include_metas=True
     ) -> Generator[Tuple[str, bytes, Optional[bytes]], None, None]:
         connection = self._get_connection()
         cursor = connection.cursor('generator')  # server-side cursor
@@ -396,16 +396,16 @@ class PostgreSQLHandler:
             )
             for rec in cursor:
                 yield rec[0], np.frombuffer(rec[1]) if rec[
-                                                           1
-                                                       ] is not None else None, rec[2]
+                    1
+                ] is not None else None, rec[2]
         else:
             cursor.execute(
                 f'SELECT doc_id, embedding FROM {self.table} ORDER BY doc_id'
             )
             for rec in cursor:
                 yield rec[0], np.frombuffer(rec[1]) if rec[
-                                                           1
-                                                       ] is not None else None, None
+                    1
+                ] is not None else None, None
         self._close_connection(connection)
 
     def _get_snapshot_timestamp(self):
@@ -420,7 +420,7 @@ class PostgreSQLHandler:
             self.logger.error(f'Could not obtain timestamp from snapshot: {e}')
 
     def _get_delta(
-            self, shards_to_get, timestamp
+        self, shards_to_get, timestamp
     ) -> Generator[Tuple[str, bytes, datetime.datetime], None, None]:
         connection = self._get_connection()
         cursor = connection.cursor('generator')  # server-side cursor

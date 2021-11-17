@@ -17,7 +17,7 @@ def doc_without_embedding(d: Document):
     return new_doc.SerializeToString()
 
 
-class PostgreSQLStorage():
+class PostgreSQLStorage:
     """:class:`PostgreSQLStorage` PostgreSQL-based Storage Indexer."""
 
     def __init__(
