@@ -134,9 +134,6 @@ def test_replicas_integration(docker_compose, get_documents):
         search_docs = result[0].docs
         assert len(search_docs[0].matches) == 0
 
-        uses_with = copy.deepcopy(uses_with)
-        uses_with['startup_sync'] = True
-
         f.rolling_update(pod_name='indexer', uses_with=uses_with)
         result = f.post('/search', search_docs, return_results=True)
         search_docs = result[0].docs
