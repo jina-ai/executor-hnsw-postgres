@@ -18,7 +18,7 @@ GENERATOR_DELTA = Generator[
 HNSW_TYPE = np.float32
 DEFAULT_METRIC = 'cosine'
 
-class HnswlibSearcher(Executor):
+class HnswlibSearcher():
     """Hnswlib powered vector indexer.
 
     This indexer uses the HNSW algorithm to index and search for vectors. It does not
@@ -60,7 +60,6 @@ class HnswlibSearcher(Executor):
         be reinterpreted as similarities.
         :param last_timestamp: the last time we synced into this HNSW index
         """
-        super().__init__(*args, **kwargs)
         self.limit = limit
         self.metric = metric
         self.dim = dim

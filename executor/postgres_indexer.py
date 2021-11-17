@@ -4,8 +4,8 @@ __license__ = 'Apache-2.0'
 from typing import Dict, List
 
 import numpy as np
-from jina import Document, DocumentArray, Executor, requests
-from jina_commons import get_logger
+from jina import Document, DocumentArray
+from jina.logging.logger import JinaLogger
 from jina_commons.indexers.dump import export_dump_streaming
 
 from .postgreshandler import PostgreSQLHandler
@@ -17,7 +17,7 @@ def doc_without_embedding(d: Document):
     return new_doc.SerializeToString()
 
 
-class PostgreSQLStorage(Executor):
+class PostgreSQLStorage():
     """:class:`PostgreSQLStorage` PostgreSQL-based Storage Indexer."""
 
     def __init__(
@@ -51,7 +51,6 @@ class PostgreSQLStorage(Executor):
         :param virtual_shards: the number of shards to distribute
          the data (used when rolling update on Searcher side)
         """
-        super().__init__(*args, **kwargs)
         self.default_traversal_paths = default_traversal_paths
         self.hostname = hostname
         self.port = port
@@ -59,7 +58,7 @@ class PostgreSQLStorage(Executor):
         self.password = password
         self.database = database
         self.table = table
-        self.logger = get_logger(self)
+        self.logger = JinaLogger('psql_indexer')
         self.virtual_shards = virtual_shards
         self.handler = PostgreSQLHandler(
             hostname=self.hostname,
