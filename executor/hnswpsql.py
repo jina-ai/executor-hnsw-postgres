@@ -255,6 +255,13 @@ class HNSWPostgresIndexer(Executor):
     def search(self, docs: 'DocumentArray', parameters: Dict = None, **kwargs):
         """Search the vec embeddings in HNSW and then lookup the metadata in PSQL
 
+        The `HNSWSearcher` attaches matches to the `Documents` sent as
+            inputs with the id of the match, and its embedding.
+            Then, the `PostgreSQLStorage` retrieves the full metadata
+            (original text or image blob) and attaches
+            those to the Document. You receive back the full Documents as matches
+            to your search Documents.
+
         :param docs: `Document` with `.embedding` the same shape as the
             `Documents` stored in the `HNSW` index. The ids of the `Documents`
             stored in `HNSW` need to exist in the PSQL.
@@ -266,13 +273,6 @@ class HNSWPostgresIndexer(Executor):
             - 'limit' (int): nr of matches to get per Document
             - 'ef_query' (int): query time accuracy/speed trade-off. High is more
             accurate but slower
-
-        :return: The `HNSWSearcher` attaches matches to the `Documents` sent as
-            inputs with the id of the match, and its embedding.
-            Then, the `PostgreSQLStorage` retrieves the full metadata
-            (original text or image blob) and attaches
-            those to the Document. You receive back the full Documents as matches
-            to your search Documents.
         """
         if self._kv_indexer and self._vec_indexer:
             self._vec_indexer.search(docs, parameters)
