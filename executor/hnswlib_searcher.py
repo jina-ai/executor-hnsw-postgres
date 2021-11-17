@@ -90,9 +90,6 @@ class HnswlibSearcher:
                 self._ids_to_inds = bidict(json.load(f))
 
         else:
-            # since we don't plan on using dump_path for the time being,
-            # this warning is not needed
-            # self.logger.info('No `dump_path` provided, initializing empty index.')
             self._init_empty_index()
 
         self._index.set_ef(self.ef_query)
