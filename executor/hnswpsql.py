@@ -2,15 +2,26 @@ __copyright__ = "Copyright (c) 2021 Jina AI Limited. All rights reserved."
 __license__ = "Apache-2.0"
 
 import copy
+import inspect
 from datetime import datetime
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple, Dict, Iterable
 
 import numpy as np
 from jina import Executor, requests, DocumentArray, Document
 from jina.logging.logger import JinaLogger
 
-from .hnswlib_searcher import HnswlibSearcher
+from .hnswlib_searcher import HnswlibSearcher, DEFAULT_METRIC
 from .postgres_indexer import PostgreSQLStorage
+
+
+def _get_kwargs():
+    frame = inspect.currentframe().f_back
+    keys, _, _, values = inspect.getargvalues(frame)
+    kwargs = {}
+    for key in keys:
+        if key != 'self':
+            kwargs[key] = values[key]
+    return kwargs
 
 
 class HNSWPostgresIndexer(Executor):
@@ -22,7 +33,28 @@ class HNSWPostgresIndexer(Executor):
     """
 
     def __init__(
-        self, total_shards: Optional[int] = None, startup_sync: bool = True, **kwargs
+        self,
+        total_shards: Optional[int] = None,
+        startup_sync: bool = True,
+        limit: int = 10,
+        metric: str = DEFAULT_METRIC,
+        dim: int = 0,
+        max_elements: int = 1_000_000,
+        ef_construction: int = 400,
+        ef_query: int = 50,
+        max_connection: int = 64,
+        is_distance: bool = True,
+        traversal_paths: Iterable[str] = ('r',),
+        hostname: str = '127.0.0.1',
+        port: int = 5432,
+        username: str = 'postgres',
+        password: str = '123456',
+        database: str = 'postgres',
+        table: str = 'default_table',
+        return_embeddings: bool = True,
+        dry_run: bool = False,
+        partitions: int = 128,
+        **kwargs,
     ):
         """
         :param startup_sync: whether to sync from PSQL into HNSW on start-up
@@ -65,6 +97,12 @@ class HNSWPostgresIndexer(Executor):
         super().__init__(**kwargs)
         self.logger = JinaLogger(getattr(self.metas, 'name', self.__class__.__name__))
 
+        # TODO is there a way to improve this?
+        # done because we want to have the args exposed in hub website
+        # but we want to avoid having to manually pass every arg to the classes
+        self._init_kwargs = _get_kwargs()
+        self._init_kwargs.update(kwargs)
+
         if total_shards is None:
             self.total_shards = getattr(self.runtime_args, 'parallel', None)
         else:
@@ -81,12 +119,11 @@ class HNSWPostgresIndexer(Executor):
 
         self._kv_indexer: Optional[PostgreSQLStorage] = None
         self._vec_indexer: Optional[HnswlibSearcher] = None
-        self._init_kwargs = kwargs
 
         (
             self._kv_indexer,
             self._vec_indexer,
-        ) = self._init_executors(kwargs)
+        ) = self._init_executors(self._init_kwargs)
         if startup_sync:
             self._sync()
 
