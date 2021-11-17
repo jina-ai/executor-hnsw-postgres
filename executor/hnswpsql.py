@@ -14,7 +14,7 @@ from .hnswlib_searcher import HnswlibSearcher, DEFAULT_METRIC
 from .postgres_indexer import PostgreSQLStorage
 
 
-def _get_kwargs():
+def _get_method_args():
     frame = inspect.currentframe().f_back
     keys, _, _, values = inspect.getargvalues(frame)
     kwargs = {}
@@ -100,7 +100,7 @@ class HNSWPostgresIndexer(Executor):
         # TODO is there a way to improve this?
         # done because we want to have the args exposed in hub website
         # but we want to avoid having to manually pass every arg to the classes
-        self._init_kwargs = _get_kwargs()
+        self._init_kwargs = _get_method_args()
         self._init_kwargs.update(kwargs)
 
         if total_shards is None:
