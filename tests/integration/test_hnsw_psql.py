@@ -1,3 +1,4 @@
+import copy
 import datetime
 import os.path
 from collections import OrderedDict
@@ -98,3 +99,51 @@ def test_basic_integration(docker_compose, get_documents):
             status
         )
         assert last_sync > last_sync_timestamp
+
+
+@pytest.mark.parametrize('docker_compose', [compose_yml], indirect=['docker_compose'])
+def test_replicas_integration(docker_compose, get_documents):
+    emb_size = 10
+    LIMIT = 10
+    NR_SHARDS = 2
+    docs = DocumentArray(get_documents(nr=100, emb_size=emb_size))
+
+    uses_with = {
+        'dim': emb_size,
+        'startup_sync': False,
+        'limit': LIMIT,
+    }
+
+    f = Flow().add(
+        name='indexer',
+        uses=HNSWPostgresIndexer,
+        uses_with=uses_with,
+        parallel=NR_SHARDS,
+        replicas=3,
+        # this will lead to warnings on PSQL for clashing ids
+        # but required in order for the query request is sent
+        # to all the shards
+        polling='all',
+        uses_after=MatchMerger
+    )
+
+    with f:
+        f.post('/index', docs)
+
+        search_docs = DocumentArray(
+            get_documents(index_start=len(docs), emb_size=emb_size))
+
+        result = f.post('/search', search_docs, return_results=True)
+        search_docs = result[0].docs
+        assert len(search_docs[0].matches) == 0
+
+        uses_with = copy.deepcopy(uses_with)
+        uses_with['startup_sync'] = True
+
+        f.rolling_update(
+            pod_name='indexer',
+            uses_with=uses_with
+        )
+        result = f.post('/search', search_docs, return_results=True)
+        search_docs = result[0].docs
+        assert len(search_docs[0].matches) == NR_SHARDS * LIMIT

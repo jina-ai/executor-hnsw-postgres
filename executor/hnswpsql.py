@@ -91,13 +91,13 @@ class HNSWPostgresIndexer(Executor):
 
         if rebuild:
             self._vec_indexer = HnswlibSearcher(**self._init_kwargs)
-        else:
-            iterator = self._kv_indexer._get_delta(
-                shard_id=self.runtime_args.pea_id,
-                total_shards=self.total_shards,
-                timestamp=timestamp,
-            )
-            self._vec_indexer.sync(iterator)
+
+        iterator = self._kv_indexer._get_delta(
+            shard_id=self.runtime_args.pea_id,
+            total_shards=self.total_shards,
+            timestamp=timestamp,
+        )
+        self._vec_indexer.sync(iterator)
 
     def _init_executors(self, _init_kwargs) -> Tuple[PostgreSQLStorage,
                                                      HnswlibSearcher]:
