@@ -19,12 +19,10 @@ class HNSWPostgresIndexer(Executor):
     def __init__(self,
                  total_shards: Optional[int] = None,
                  startup_sync: bool = True,
-                 rebuild: bool = True,
                  **kwargs):
         """
         :param startup_sync: whether to sync from PSQL into HNSW on start-up
         :param total_shards: the total nr of shards that this shard is part of.
-        :param rebuild: assume all sync operations should completely rebuild HNSW
 
             NOTE: `total_shards` is REQUIRED in k8s, since there
             `runtime_args.parallel` is always 1
@@ -46,7 +44,6 @@ class HNSWPostgresIndexer(Executor):
             # shards is passed as str from Flow.add in yaml
             self.total_shards = int(self.total_shards)
 
-        self.rebuild = rebuild
         self._kv_indexer: Optional[PostgreSQLStorage] = None
         self._vec_indexer: Optional[HnswlibSearcher] = None
         self._init_kwargs = kwargs
@@ -56,7 +53,7 @@ class HNSWPostgresIndexer(Executor):
             self._vec_indexer,
         ) = self._init_executors(kwargs)
         if startup_sync:
-            self._sync(self.rebuild)
+            self._sync()
 
     @requests(on='/sync')
     def sync(self, parameters: Dict, **kwargs):
@@ -89,7 +86,7 @@ class HNSWPostgresIndexer(Executor):
         else:
             timestamp = datetime.fromisoformat(timestamp)
 
-        if rebuild:
+        if rebuild or self._vec_indexer is None:
             self._vec_indexer = HnswlibSearcher(**self._init_kwargs)
 
         iterator = self._kv_indexer._get_delta(
