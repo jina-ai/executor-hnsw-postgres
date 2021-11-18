@@ -1,4 +1,3 @@
-import copy
 import datetime
 import os.path
 from collections import OrderedDict
@@ -138,3 +137,36 @@ def test_replicas_integration(docker_compose, get_documents):
         result = f.post('/search', search_docs, return_results=True)
         search_docs = result[0].docs
         assert len(search_docs[0].matches) == NR_SHARDS * LIMIT
+
+
+@pytest.mark.parametrize('docker_compose', [compose_yml], indirect=['docker_compose'])
+def test_integration_cleanup(docker_compose, get_documents):
+    emb_size = 10
+    docs = DocumentArray(get_documents(nr=100, emb_size=emb_size))
+
+    uses_with = {
+        'dim': emb_size,
+    }
+
+    f = Flow().add(
+        name='indexer',
+        uses=HNSWPostgresIndexer,
+        uses_with=uses_with,
+    )
+
+    with f:
+        f.post('/index', docs)
+        result = f.post('/status', None, return_results=True)
+        result_docs = result[0].docs
+        assert int(result_docs[0].tags['psql_docs']) == len(docs)
+
+        # default to soft delete
+        f.delete(docs)
+        result = f.post('/status', None, return_results=True)
+        result_docs = result[0].docs
+        assert int(result_docs[0].tags['psql_docs']) == len(docs)
+
+        f.post(on='/cleanup')
+        result = f.post('/status', None, return_results=True)
+        result_docs = result[0].docs
+        assert int(result_docs[0].tags['psql_docs']) == 0
