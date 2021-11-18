@@ -34,6 +34,7 @@ class PostgreSQLStorage:
         dry_run: bool = False,
         partitions: int = 128,
         dump_dtype: type = np.float64,
+        mute_unique_warnings: bool = False,
         *args,
         **kwargs,
     ):
@@ -51,6 +52,9 @@ class PostgreSQLStorage:
         :param dry_run: If True, no database connection will be build.
         :param partitions: the number of shards to distribute
          the data (used when rolling update on Searcher side)
+         :param mute_unique_warnings: whether to mute warnings about unique
+        ids constraint failing (useful when indexing with shards and
+        polling = 'all')
         """
         self.default_traversal_paths = traversal_paths
         self.hostname = hostname
@@ -72,6 +76,7 @@ class PostgreSQLStorage:
             dry_run=dry_run,
             partitions=partitions,
             dump_dtype=dump_dtype,
+            mute_unique_warnings=mute_unique_warnings,
         )
         self.default_return_embeddings = return_embeddings
 

@@ -54,6 +54,7 @@ class HNSWPostgresIndexer(Executor):
         return_embeddings: bool = True,
         dry_run: bool = False,
         partitions: int = 128,
+        mute_unique_warnings: bool = False,
         **kwargs,
     ):
         """
@@ -86,6 +87,7 @@ class HNSWPostgresIndexer(Executor):
         :param dry_run: (PSQL) If True, no database connection will be built
         :param partitions: (PSQL) the number of shards to distribute
          the data (used when syncing into HNSW)
+        :param mute_unique_warnings: (PSQL) whether to mute warnings about unique ids constraint failing (useful when indexing with shards and polling = 'all')
 
         NOTE:
 
