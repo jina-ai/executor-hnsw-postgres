@@ -31,3 +31,8 @@ def get_documents():
             yield d
 
     return get_documents_inner
+
+
+@pytest.fixture()
+def runtime_args():
+    return {'pea_id': 0, 'replica_id': 0, 'parallel': 1}

@@ -283,3 +283,10 @@ class PostgreSQLStorage:
         """
         with self.handler as postgres_handler:
             postgres_handler.clear()
+
+    @property
+    def initialized(self, **kwargs):
+        """
+        Whether the PSQL connection has been initialized
+        """
+        return hasattr(self.handler, 'postgreSQL_pool')
