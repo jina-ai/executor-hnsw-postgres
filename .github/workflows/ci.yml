@@ -1,0 +1,14 @@
+name: CI
+
+on: [pull_request]
+
+jobs:
+  linting:
+    runs-on: ubuntu-latest
+    steps:
+      - name: install black
+        run: pip install black==21.7b0
+      - name: Black check formatting
+        run: black --check -S .
+  call-external:
+    uses: jina-ai/workflows-executors/.github/workflows/ci.yml@master
