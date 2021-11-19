@@ -323,7 +323,7 @@ class HnswlibSearcher:
 
     def sync(self, delta: GENERATOR_DELTA):
         if delta is None:
-            self.logger.warning('No data received in Faiss._add_delta. Skipping...')
+            self.logger.warning('No data received in HNSW.sync. Skipping...')
             return
 
         for doc_id, vec_array, doc_timestamp in delta:

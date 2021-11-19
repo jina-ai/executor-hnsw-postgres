@@ -54,6 +54,7 @@ class HNSWPostgresIndexer(Executor):
         return_embeddings: bool = True,
         dry_run: bool = False,
         partitions: int = 128,
+        mute_unique_warnings: bool = False,
         **kwargs,
     ):
         """
@@ -86,6 +87,8 @@ class HNSWPostgresIndexer(Executor):
         :param dry_run: (PSQL) If True, no database connection will be built
         :param partitions: (PSQL) the number of shards to distribute
          the data (used when syncing into HNSW)
+        :param mute_unique_warnings: (PSQL) whether to mute warnings about unique
+        ids constraint failing (useful when indexing with shards and polling = 'all')
 
         NOTE:
 
@@ -228,8 +231,12 @@ class HNSWPostgresIndexer(Executor):
         Delete data from PSQL and HNSW
 
         """
-        self._kv_indexer.clear()
+        if self._kv_indexer.initialized:
+            self._kv_indexer.clear()
         self._vec_indexer = HnswlibSearcher(**self._init_kwargs)
+        self._vec_indexer.clear()
+        assert self._kv_indexer.size == 0
+        assert self._vec_indexer.size == 0
 
     @requests(on='/status')
     def status(self, **kwargs):
@@ -239,10 +246,24 @@ class HNSWPostgresIndexer(Executor):
         :return: DocumentArray with one Document with tags 'psql_docs', 'hnsw_docs',
         'last_sync', 'pea_id'
         """
-        psql_docs = self._kv_indexer.size
-        hnsw_docs = self._vec_indexer.size
-        last_sync = self._vec_indexer.last_timestamp
-        last_sync = last_sync.isoformat()
+        psql_docs = None
+        hnsw_docs = None
+        last_sync = None
+
+        if self._kv_indexer and self._kv_indexer.initialized:
+            psql_docs = self._kv_indexer.size
+        else:
+            self.logger.warning(f'PSQL connection has not been initialized')
+
+        if self._vec_indexer:
+            hnsw_docs = self._vec_indexer.size
+            if hnsw_docs > 0:
+                print(f'here {self.runtime_args.pea_id}')
+            last_sync = self._vec_indexer.last_timestamp
+            last_sync = last_sync.isoformat()
+        else:
+            self.logger.warning(f'HNSW index has not been initialized')
+
         status = {
             'psql_docs': psql_docs,
             'hnsw_docs': hnsw_docs,
@@ -284,3 +305,14 @@ class HNSWPostgresIndexer(Executor):
         else:
             self.logger.warning('Indexers have not been initialized. Empty results')
             return
+
+    @requests(on='/cleanup')
+    def cleanup(self, **kwargs):
+        """
+        Completely remove the entries in PSQL that have been
+        soft-deleted (via the /delete endpoint)
+        """
+        if self._kv_indexer:
+            self._kv_indexer.cleanup()
+        else:
+            self.logger.warning(f'PSQL has not been initialized')

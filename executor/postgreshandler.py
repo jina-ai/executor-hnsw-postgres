@@ -37,6 +37,9 @@ class PostgreSQLHandler:
     :param dry_run: If True, no database connection will be build
     :param partitions: the number of shards to
     distribute the data (used when rolling update on Searcher side)
+    :param mute_unique_warnings: whether to mute warnings about unique
+    ids constraint failing (useful when indexing with shards and
+    polling = 'all')
     :param args: other arguments
     :param kwargs: other keyword arguments
     """
@@ -53,6 +56,7 @@ class PostgreSQLHandler:
         dump_dtype: type = np.float64,
         dry_run: bool = False,
         partitions: int = 128,
+        mute_unique_warnings: bool = False,
         *args,
         **kwargs,
     ):
@@ -62,6 +66,7 @@ class PostgreSQLHandler:
         self.dump_dtype = dump_dtype
         self.partitions = partitions
         self.snapshot_table = 'snapshot'
+        self.mute_unique_warnings = mute_unique_warnings
 
         if not dry_run:
             self.postgreSQL_pool = psycopg2.pool.SimpleConnectionPool(
@@ -74,6 +79,12 @@ class PostgreSQLHandler:
                 port=port,
             )
             self._init_table()
+        else:
+            self.logger.info(
+                'PSQL started in dry run mode. Will not connect to '
+                'PSQL service. Needs to be restarted to connect '
+                'again, with `dry_run=False`'
+            )
 
     def __enter__(self):
         self.connection = self._get_connection()
@@ -199,10 +210,11 @@ class PostgreSQLHandler:
                 ],
             )
         except psycopg2.errors.UniqueViolation as e:
-            self.logger.warning(
-                f'Document already exists in PSQL database.'
-                f' {e}. Skipping entire transaction...'
-            )
+            if not self.mute_unique_warnings:
+                self.logger.warning(
+                    f'Document already exists in PSQL database.'
+                    f' {e}. Skipping entire transaction...'
+                )
             self.connection.rollback()
         self.connection.commit()
 
@@ -239,9 +251,8 @@ class PostgreSQLHandler:
         have been marked for soft-deletion
         """
         cursor = self.connection.cursor()
-        psycopg2.extras.execute_batch(
-            cursor,
-            f'DELETE FROM {self.table} ' f'WHERE doc == NULL',
+        cursor.execute(
+            f'DELETE FROM {self.table} WHERE doc is NULL',
         )
         self.connection.commit()
         return
@@ -466,3 +477,10 @@ class PostgreSQLHandler:
         cursor.execute(f'DELETE FROM {self.table}')
         self.connection.commit()
         return
+
+    @property
+    def initialized(self, **kwargs):
+        """
+        Whether the PSQL connection has been initialized
+        """
+        return hasattr(self, 'postgreSQL_pool')
