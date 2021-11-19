@@ -44,6 +44,7 @@ class HNSWPostgresIndexer(Executor):
         ef_query: int = 50,
         max_connection: int = 64,
         is_distance: bool = True,
+        num_threads: int = -1,
         traversal_paths: Iterable[str] = ('r',),
         hostname: str = '127.0.0.1',
         port: int = 5432,
@@ -74,6 +75,7 @@ class HNSWPostgresIndexer(Executor):
         :param is_distance: (HNSW) if distance metric needs to be reinterpreted as
         similarity
         :param last_timestamp: (HNSW) the last time we synced into this HNSW index
+        :param num_threads: (HNSW) nr of threads to use during indexing. -1 is default
         :param traversal_paths: (PSQL) default traversal paths on docs
         (used for indexing, delete and update), e.g. ['r'], ['c']
         :param hostname: (PSQL) hostname of the machine

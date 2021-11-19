@@ -39,6 +39,7 @@ class HnswlibSearcher:
         traversal_paths: Iterable[str] = ('r',),
         is_distance: bool = True,
         last_timestamp: datetime = datetime.min,
+        num_threads: int = -1,
         *args,
         **kwargs,
     ):
@@ -73,6 +74,7 @@ class HnswlibSearcher:
         self.dump_path = dump_path
         self.is_distance = is_distance
         self.last_timestamp = last_timestamp
+        self.num_threads = num_threads
 
         self.logger = JinaLogger(self.__class__.__name__)
         self._index = hnswlib.Index(space=self.metric_type, dim=self.dim)
@@ -203,7 +205,7 @@ class HnswlibSearcher:
             docs_inds = list(
                 range(self._index.element_count, self._index.element_count + len(ids))
             )
-        self._index.add_items(embeddings, ids=docs_inds)
+        self._index.add_items(embeddings, ids=docs_inds, num_threads=self.num_threads)
         self._ids_to_inds.update({_id: ind for _id, ind in zip(ids, docs_inds)})
 
     def update(
@@ -248,7 +250,7 @@ class HnswlibSearcher:
                 f' {embeddings.shape[-1]}, but dimension of index is {self.dim}'
             )
 
-        self._index.add_items(embeddings, ids=doc_inds)
+        self._index.add_items(embeddings, ids=doc_inds, num_threads=self.num_threads)
 
     def delete(self, parameters: Dict, **kwargs):
         """Delete entries from the index by id
