@@ -1,5 +1,6 @@
 import datetime
 import os.path
+import time
 from collections import OrderedDict
 from typing import Dict
 
@@ -123,9 +124,22 @@ def test_replicas_integration(
         # to all the shards
         polling='all',
         uses_after=MatchMerger,
+        timeout_ready=-1,
     )
 
     with f:
+        # THIS FAILS
+        # it's as if a HNSW index persists across restarting the Flow?
+        # but in the clear endpoint the assertion is correct
+        if benchmark:
+            f.post('/clear')
+
+        result_docs = f.post('/status', return_results=True)[0].docs
+        status = dict(result_docs[0].tags)
+        assert int(status['psql_docs']) == 0
+        hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
+        assert int(hnsw_docs) == 0
+
         request_size = 100
         if benchmark:
             request_size = 1000
@@ -146,19 +160,30 @@ def test_replicas_integration(
             search_docs = result[0].docs
             assert len(search_docs[0].matches) == 0
 
-        with TimeContext(
-            f'rolling update {NR_REPLICAS} replicas x {NR_SHARDS} ' f'shards'
-        ):
+        with TimeContext(f'rolling update {NR_REPLICAS} replicas x {NR_SHARDS} shards'):
             f.rolling_update(pod_name='indexer', uses_with=uses_with)
 
-        status = dict(f.post('/status', return_results=True)[0].docs[0].tags)
+        result_docs = f.post('/status', return_results=True)[0].docs
+        status = dict(result_docs[0].tags)
         assert int(status['psql_docs']) == nr_docs
-        assert int(status['hnsw_docs']) >= nr_docs // NR_SHARDS
+        hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
+        assert int(hnsw_docs) == nr_docs
 
         with TimeContext(f'search with {nr_search_docs}'):
             result = f.post('/search', search_docs, return_results=True)
         search_docs = result[0].docs
         assert len(search_docs[0].matches) == NR_SHARDS * LIMIT
+        # FIXME(core?): if we remove this the test `test_benchmark_basic` fails
+        # it's as the peas after the rolling update are kept alive somewhere
+        # and then the flow is reconnecting to them???
+        # need to investigate further
+        if benchmark:
+            f.post('/clear')
+        #     result_docs = f.post('/status', return_results=True)[0].docs
+        #     status = dict(result_docs[0].tags)
+        #     assert int(status['psql_docs']) == 0
+        # hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
+        # assert int(hnsw_docs) == 0
 
 
 def in_docker():
@@ -172,17 +197,18 @@ def in_docker():
 
 @pytest.mark.parametrize('docker_compose', [compose_yml], indirect=['docker_compose'])
 def test_benchmark_basic(docker_compose, get_documents):
-    nr_docs = 1000000
+    docs = [1_000, 1_000, 10_000, 100_000, 1_000_000]
     if in_docker() or ('GITHUB_WORKFLOW' in os.environ):
-        nr_docs = 1000
-    return test_replicas_integration(
-        docker_compose=docker_compose,
-        nr_docs=nr_docs,
-        get_documents=get_documents,
-        nr_search_docs=10,
-        emb_size=128,
-        benchmark=True,
-    )
+        docs.pop()
+    for nr_docs in docs:
+        test_replicas_integration(
+            docker_compose=docker_compose,
+            nr_docs=nr_docs,
+            get_documents=get_documents,
+            nr_search_docs=10,
+            emb_size=128,
+            benchmark=True,
+        )
 
 
 @pytest.mark.parametrize('docker_compose', [compose_yml], indirect=['docker_compose'])
