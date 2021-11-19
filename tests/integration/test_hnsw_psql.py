@@ -1,6 +1,5 @@
 import datetime
 import os.path
-import time
 from collections import OrderedDict
 from typing import Dict
 
@@ -43,13 +42,16 @@ class MatchMerger(Executor):
 @pytest.mark.parametrize('docker_compose', [compose_yml], indirect=['docker_compose'])
 def test_basic_integration(docker_compose, get_documents):
     emb_size = 10
+    nr_docs = 299
 
-    docs = DocumentArray(get_documents(emb_size=emb_size))
+    docs = DocumentArray(get_documents(nr=nr_docs, emb_size=emb_size))
 
     f = Flow().add(
         uses=HNSWPostgresIndexer,
-        uses_with={'dim': emb_size},
-        parallel=3,
+        uses_with={
+            'dim': emb_size,
+        },
+        parallel=1,
         # this will lead to warnings on PSQL for clashing ids
         # but required in order for the query request is sent
         # to all the shards
@@ -128,12 +130,6 @@ def test_replicas_integration(
     )
 
     with f:
-        # THIS FAILS
-        # it's as if a HNSW index persists across restarting the Flow?
-        # but in the clear endpoint the assertion is correct
-        if benchmark:
-            f.post('/clear')
-
         result_docs = f.post('/status', return_results=True)[0].docs
         status = dict(result_docs[0].tags)
         assert int(status['psql_docs']) == 0
@@ -173,17 +169,9 @@ def test_replicas_integration(
             result = f.post('/search', search_docs, return_results=True)
         search_docs = result[0].docs
         assert len(search_docs[0].matches) == NR_SHARDS * LIMIT
-        # FIXME(core?): if we remove this the test `test_benchmark_basic` fails
-        # it's as the peas after the rolling update are kept alive somewhere
-        # and then the flow is reconnecting to them???
-        # need to investigate further
+        # FIXME(core): see https://github.com/jina-ai/executor-hnsw-postgres/pull/7
         if benchmark:
             f.post('/clear')
-        #     result_docs = f.post('/status', return_results=True)[0].docs
-        #     status = dict(result_docs[0].tags)
-        #     assert int(status['psql_docs']) == 0
-        # hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
-        # assert int(hnsw_docs) == 0
 
 
 def in_docker():
@@ -197,7 +185,7 @@ def in_docker():
 
 @pytest.mark.parametrize('docker_compose', [compose_yml], indirect=['docker_compose'])
 def test_benchmark_basic(docker_compose, get_documents):
-    docs = [1_000, 1_000, 10_000, 100_000, 1_000_000]
+    docs = [1_000, 10_000, 100_000, 1_000_000]
     if in_docker() or ('GITHUB_WORKFLOW' in os.environ):
         docs.pop()
     for nr_docs in docs:
@@ -242,3 +230,7 @@ def test_integration_cleanup(docker_compose, get_documents):
         result = f.post('/status', None, return_results=True)
         result_docs = result[0].docs
         assert int(result_docs[0].tags['psql_docs']) == 0
+
+
+# TODO test with update. same ids, diff embeddings, assert embeddings in match has
+# changed

@@ -3,12 +3,12 @@ __license__ = "Apache-2.0"
 
 import json
 from datetime import datetime
-from typing import Dict, Iterable, Optional, Generator, Tuple
+from typing import Dict, Iterable, Optional, Generator, Tuple, List
 
 import hnswlib
 import numpy as np
 from bidict import bidict
-from jina import Executor, DocumentArray, Document
+from jina import DocumentArray, Document
 from jina.logging.logger import JinaLogger
 
 GENERATOR_DELTA = Generator[
@@ -32,9 +32,9 @@ class HnswlibSearcher:
         metric: str = DEFAULT_METRIC,
         dim: int = 0,
         max_elements: int = 1_000_000,
-        ef_construction: int = 400,
+        ef_construction: int = 200,
         ef_query: int = 50,
-        max_connection: int = 64,
+        max_connection: int = 16,
         dump_path: Optional[str] = None,
         traversal_paths: Iterable[str] = ('r',),
         is_distance: bool = True,
@@ -188,19 +188,23 @@ class HnswlibSearcher:
 
         ids = docs_to_index.get_attributes('id')
         index_size = self._index.element_count
-        doc_inds = []
-        for doc in docs_to_index:
-            if doc.id not in self._ids_to_inds:
-                doc_inds.append(index_size)
+        docs_inds = []
+        for id in ids:
+            if id not in self._ids_to_inds:
+                docs_inds.append(index_size)
                 index_size += 1
             else:
-                self.logger.info(
-                    f'Document with id {doc.id} already in index, updating.'
-                )
-                doc_inds.append(self._ids_to_inds[doc.id])
+                self.logger.info(f'Document with id {id} already in index, updating.')
+                docs_inds.append(self._ids_to_inds[id])
+        self._add(embeddings, ids, docs_inds)
 
-        self._index.add_items(embeddings, ids=doc_inds)
-        self._ids_to_inds.update({_id: ind for _id, ind in zip(ids, doc_inds)})
+    def _add(self, embeddings, ids, docs_inds: Optional[List[int]] = None):
+        if docs_inds is None:
+            docs_inds = list(
+                range(self._index.element_count, self._index.element_count + len(ids))
+            )
+        self._index.add_items(embeddings, ids=docs_inds)
+        self._ids_to_inds.update({_id: ind for _id, ind in zip(ids, docs_inds)})
 
     def update(
         self, docs: Optional[DocumentArray] = None, parameters: Dict = {}, **kwargs
@@ -337,13 +341,43 @@ class HnswlibSearcher:
                     continue
                 vec = vec_array.astype(HNSW_TYPE)
 
-                da = DocumentArray([Document(id=doc_id, embedding=vec)])
-                self.index(da)
+                self._add([vec], [doc_id])
             elif vec_array is None:
                 self.delete({'ids': [doc_id]})
             else:
                 vec = vec_array.reshape(1, -1).astype(HNSW_TYPE)
                 da = DocumentArray(Document(id=doc_id, embedding=vec))
                 self.update(da)
+
+        self.last_timestamp = datetime.now()
+
+    def index_sync(self, iterator: GENERATOR_DELTA, batch_size=100) -> None:
+        if iterator is None:
+            self.logger.warning('No data received in HNSW.sync. Skipping...')
+            return
+
+        this_batch_size = 0
+        # batching
+        this_batch_embeds = np.zeros((batch_size, self.dim), dtype=HNSW_TYPE)
+        this_batch_ids = []
+
+        while True:
+            try:
+                doc_id, vec_array, _ = next(iterator)
+                vec = vec_array.astype(HNSW_TYPE)
+                this_batch_embeds[this_batch_size] = vec
+                this_batch_ids.append(doc_id)
+                this_batch_size += 1
+
+                if this_batch_size == batch_size:
+                    # do it
+                    # we don't send the 0s
+                    self._add(this_batch_embeds[:this_batch_size], this_batch_ids)
+                    this_batch_size = 0
+                    this_batch_ids = []
+            except StopIteration:
+                if this_batch_size > 0:
+                    self._add(this_batch_embeds[:this_batch_size], this_batch_ids)
+                break
 
         self.last_timestamp = datetime.now()

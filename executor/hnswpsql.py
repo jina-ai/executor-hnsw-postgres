@@ -143,10 +143,17 @@ class HNSWPostgresIndexer(Executor):
             incremental syncing
             - 'timestamp' (str): ISO-formatted timestamp string. Time
             from which to get data for syncing into HNSW
+            - 'batch_size' (int): The batch size for indexing in HNSW
         """
         self._sync(**parameters)
 
-    def _sync(self, rebuild: bool = False, timestamp: str = None, **kwargs):
+    def _sync(
+        self,
+        rebuild: bool = False,
+        timestamp: str = None,
+        batch_size: int = 100,
+        **kwargs,
+    ):
         if timestamp is None:
             if rebuild:
                 timestamp = datetime.min
@@ -162,15 +169,19 @@ class HNSWPostgresIndexer(Executor):
         else:
             timestamp = datetime.fromisoformat(timestamp)
 
-        if rebuild or self._vec_indexer is None:
-            self._vec_indexer = HnswlibSearcher(**self._init_kwargs)
-
         iterator = self._kv_indexer._get_delta(
             shard_id=self.runtime_args.pea_id,
             total_shards=self.total_shards,
             timestamp=timestamp,
         )
-        self._vec_indexer.sync(iterator)
+
+        if rebuild or self._vec_indexer.size == 0:
+            # call with just indexing
+            self._vec_indexer = HnswlibSearcher(**self._init_kwargs)
+            self._vec_indexer.index_sync(iterator, batch_size)
+
+        else:
+            self._vec_indexer.sync(iterator)
 
     def _init_executors(
         self, _init_kwargs
@@ -257,8 +268,6 @@ class HNSWPostgresIndexer(Executor):
 
         if self._vec_indexer:
             hnsw_docs = self._vec_indexer.size
-            if hnsw_docs > 0:
-                print(f'here {self.runtime_args.pea_id}')
             last_sync = self._vec_indexer.last_timestamp
             last_sync = last_sync.isoformat()
         else:

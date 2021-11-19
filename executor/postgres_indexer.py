@@ -269,7 +269,7 @@ class PostgreSQLStorage:
             with self.handler as postgres_handler:
                 return postgres_handler._get_delta(shards_to_get, timestamp)
         else:
-            self.logger.warning('No data in PSQL to export with _get_delta...')
+            self.logger.warning('No data in PSQL to sync into HNSW. Skipping')
         return None
 
     @property
