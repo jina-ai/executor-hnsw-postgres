@@ -56,7 +56,7 @@ class HnswlibSearcher:
             graph (the "M" parameter)
         :param dump_path: The path to the directory from where to load, and where to
             save the index state
-        :param traversal_paths: The default traverseal path on docs (used for
+        :param traversal_paths: The default traversal path on docs (used for
         indexing,
             search and update), e.g. ['r'], ['c']
         :param is_distance: Boolean flag that describes if distance metric need to
