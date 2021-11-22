@@ -29,7 +29,7 @@ class PostgreSQLStorage:
         database: str = 'postgres',
         table: str = 'default_table',
         max_connections=5,
-        traversal_paths: List[str] = ['r'],
+        traversal_paths: str = 'r',
         return_embeddings: bool = True,
         dry_run: bool = False,
         partitions: int = 128,
