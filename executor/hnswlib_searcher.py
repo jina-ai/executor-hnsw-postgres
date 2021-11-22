@@ -367,6 +367,9 @@ class HnswlibSearcher:
         while True:
             try:
                 doc_id, vec_array, _ = next(iterator)
+                if vec_array is None:
+                    continue
+
                 vec = vec_array.astype(HNSW_TYPE)
                 this_batch_embeds[this_batch_size] = vec
                 this_batch_ids.append(doc_id)
