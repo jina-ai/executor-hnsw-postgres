@@ -3,6 +3,7 @@ __license__ = "Apache-2.0"
 
 import copy
 import inspect
+import time
 from datetime import datetime
 from threading import Thread
 from typing import Optional, Tuple, Dict, Iterable
@@ -337,7 +338,7 @@ class HNSWPostgresIndexer(Executor):
             self.logger.warning(f'PSQL has not been initialized')
 
     def _start_auto_sync(self):
-        self.sync_thread = Thread(target=self._sync_loop, args=(self,), daemon=True)
+        self.sync_thread = Thread(target=self._sync_loop, daemon=True)
         self.sync_thread.start()
 
     def close(self) -> None:
@@ -351,6 +352,7 @@ class HNSWPostgresIndexer(Executor):
         try:
             self.logger.warning(f'started sync loop')
             while True:
-                self._sync(rebuild=False)
+                self._sync(rebuild=False, timestamp=None, batch_size=100)
+                time.sleep(5)
         except Exception as e:
             print(f'THREAD: {e}', flush=True)

@@ -15,11 +15,13 @@ METRIC = 'cosine'
 @pytest.mark.parametrize('docker_compose', [compose_yml], indirect=['docker_compose'])
 def test_sync(docker_compose, get_documents):
     emb_size = 10
-    nr_docs = 299
+    nr_docs_batch = 3
+    nr_runs = 4
 
     uses_with = {'dim': emb_size, 'auto_sync': True}
-
-    docs = DocumentArray(get_documents(nr=nr_docs, emb_size=emb_size))
+    search_docs = DocumentArray(
+        get_documents(index_start=nr_docs_batch * (nr_runs + 1), emb_size=emb_size)
+    )
 
     f = Flow().add(
         uses=HNSWPostgresIndexer,
@@ -27,36 +29,32 @@ def test_sync(docker_compose, get_documents):
     )
 
     with f:
-        result = f.post('/status', None, return_results=True)
-        result_docs = result[0].docs
-        first_hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
-        assert int(result_docs[0].tags['psql_docs']) == 0
-        assert int(first_hnsw_docs) == 0
+        nr_indexed_docs, last_sync_timestamp = verify_status(f, 0)
 
-        status = result_docs[0].tags['last_sync']
-        last_sync_timestamp = datetime.datetime.fromisoformat(status)
+        i = 0
+        while i < nr_runs:
+            docs = DocumentArray(
+                get_documents(
+                    nr=nr_docs_batch, index_start=i * nr_docs_batch, emb_size=emb_size
+                )
+            )
+            f.post('/index', docs)
 
-        f.post('/index', docs)
+            time.sleep(10)  # wait for syncing
 
-        search_docs = DocumentArray(
-            get_documents(index_start=len(docs), emb_size=emb_size)
-        )
+            result = f.post('/search', search_docs, return_results=True)
+            search_docs = result[0].docs
+            assert len(search_docs[0].matches) > nr_indexed_docs
+            nr_indexed_docs, last_sync_timestamp = verify_status(f, nr_indexed_docs)
+            i += 1
 
-        result = f.post('/search', search_docs, return_results=True)
-        search_docs = result[0].docs
-        assert len(search_docs[0].matches) == 0
 
-        time.sleep(10)  # wait for syncing
-        result = f.post('/search', search_docs, return_results=True)
-        search_docs = result[0].docs
-        assert len(search_docs[0].matches) > 0
-
-        result = f.post('/status', None, return_results=True)
-        result_docs = result[0].docs
-        new_hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
-        assert new_hnsw_docs > first_hnsw_docs
-        assert int(new_hnsw_docs) == len(docs)
-        assert int(result_docs[0].tags['psql_docs']) == len(docs)
-        status = result_docs[0].tags['last_sync']
-        last_sync = datetime.datetime.fromisoformat(status)
-        assert last_sync > last_sync_timestamp
+def verify_status(f, expected_size_min):
+    result = f.post('/status', None, return_results=True)
+    result_docs = result[0].docs
+    first_hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
+    assert int(result_docs[0].tags['psql_docs']) >= expected_size_min
+    assert int(first_hnsw_docs) >= expected_size_min
+    status = result_docs[0].tags['last_sync']
+    last_sync_timestamp = datetime.datetime.fromisoformat(status)
+    return first_hnsw_docs, last_sync_timestamp
