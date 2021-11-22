@@ -1,7 +1,9 @@
 __copyright__ = 'Copyright (c) 2021 Jina AI Limited. All rights reserved.'
 __license__ = 'Apache-2.0'
 
-from typing import Dict, List
+import datetime
+from datetime import timezone
+from typing import Dict
 
 import numpy as np
 from jina import Document, DocumentArray
@@ -256,10 +258,12 @@ class PostgreSQLStorage:
             ]
         return [str(shard_id) for shard_id in shards_to_get]
 
-    def _get_delta(self, shard_id, total_shards, timestamp):
+    def _get_delta(self, shard_id, total_shards, timestamp: datetime.datetime):
         """
         Get the rows that have changed since the last timestamp, per shard
         """
+        # TODO timezone issues with timestamp
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
         if self.size > 0:
 
             shards_to_get = self._vshards_to_get(

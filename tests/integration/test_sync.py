@@ -14,6 +14,18 @@ METRIC = 'cosine'
 
 @pytest.mark.parametrize('docker_compose', [compose_yml], indirect=['docker_compose'])
 def test_sync(docker_compose, get_documents):
+    def verify_status(f, expected_size_min):
+        result = f.post('/status', None, return_results=True)
+        result_docs = result[0].docs
+        first_hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
+        psql_docs = int(result_docs[0].tags['psql_docs'])
+        print(f'## psql_docs = {psql_docs}; hnsw = {first_hnsw_docs}')
+        assert psql_docs >= expected_size_min
+        assert int(first_hnsw_docs) >= expected_size_min
+        status = result_docs[0].tags['last_sync']
+        last_sync_timestamp = datetime.datetime.fromisoformat(status)
+        return first_hnsw_docs, last_sync_timestamp
+
     emb_size = 10
     nr_docs_batch = 3
     nr_runs = 4
@@ -33,11 +45,10 @@ def test_sync(docker_compose, get_documents):
 
         i = 0
         while i < nr_runs:
-            docs = DocumentArray(
-                get_documents(
-                    nr=nr_docs_batch, index_start=i * nr_docs_batch, emb_size=emb_size
-                )
+            docs = get_documents(
+                nr=nr_docs_batch, index_start=i * nr_docs_batch, emb_size=emb_size
             )
+
             f.post('/index', docs)
 
             time.sleep(10)  # wait for syncing
@@ -47,14 +58,3 @@ def test_sync(docker_compose, get_documents):
             assert len(search_docs[0].matches) > nr_indexed_docs
             nr_indexed_docs, last_sync_timestamp = verify_status(f, nr_indexed_docs)
             i += 1
-
-
-def verify_status(f, expected_size_min):
-    result = f.post('/status', None, return_results=True)
-    result_docs = result[0].docs
-    first_hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
-    assert int(result_docs[0].tags['psql_docs']) >= expected_size_min
-    assert int(first_hnsw_docs) >= expected_size_min
-    status = result_docs[0].tags['last_sync']
-    last_sync_timestamp = datetime.datetime.fromisoformat(status)
-    return first_hnsw_docs, last_sync_timestamp

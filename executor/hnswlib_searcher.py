@@ -351,7 +351,8 @@ class HnswlibSearcher:
                 da = DocumentArray(Document(id=doc_id, embedding=vec))
                 self.update(da)
 
-        self.last_timestamp = datetime.now()
+            if doc_timestamp > self.last_timestamp:
+                self.last_timestamp = doc_timestamp
 
     def index_sync(self, iterator: GENERATOR_DELTA, batch_size=100) -> None:
         if iterator is None:

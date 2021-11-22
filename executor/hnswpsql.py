@@ -15,6 +15,8 @@ from jina.logging.logger import JinaLogger
 from .hnswlib_searcher import HnswlibSearcher, DEFAULT_METRIC
 from .postgres_indexer import PostgreSQLStorage
 
+STOP_SYNC_THREAD = False
+
 
 def _get_method_args():
     frame = inspect.currentframe().f_back
@@ -167,6 +169,7 @@ class HNSWPostgresIndexer(Executor):
                 timestamp = datetime.min
             elif self._vec_indexer.last_timestamp:
                 timestamp = self._vec_indexer.last_timestamp
+                print(f'### timestamp = {timestamp}')
             else:
                 self.logger.error(
                     f'No timestamp provided in parameters: '
@@ -187,9 +190,15 @@ class HNSWPostgresIndexer(Executor):
             # call with just indexing
             self._vec_indexer = HnswlibSearcher(**self._init_kwargs)
             self._vec_indexer.index_sync(iterator, batch_size)
+            self.logger.info(f'Rebuilt HNSW index with {self._vec_indexer.size} docs')
 
         else:
+            prev_size = self._vec_indexer.size
             self._vec_indexer.sync(iterator)
+            self.logger.info(
+                f'Synced HNSW index from {prev_size} docs to '
+                f'{self._vec_indexer.size}'
+            )
 
     def _init_executors(
         self, _init_kwargs
@@ -338,21 +347,30 @@ class HNSWPostgresIndexer(Executor):
             self.logger.warning(f'PSQL has not been initialized')
 
     def _start_auto_sync(self):
-        self.sync_thread = Thread(target=self._sync_loop, daemon=True)
+        self.sync_thread = Thread(target=self._sync_loop, daemon=False)
         self.sync_thread.start()
 
     def close(self) -> None:
+        global STOP_SYNC_THREAD
+
         if hasattr(self, 'sync_thread'):
+            STOP_SYNC_THREAD = True
             try:
-                self.sync_thread.join(1)
+                while self.sync_thread.is_alive():
+                    time.sleep(2)
             except Exception as e:
                 self.logger.warning(f'Error when stopping sync thread: {e}')
 
     def _sync_loop(self):
+        global STOP_SYNC_THREAD
         try:
-            self.logger.warning(f'started sync loop')
+            self.logger.warning(f'started sync thread')
             while True:
                 self._sync(rebuild=False, timestamp=None, batch_size=100)
+                self.logger.info(f'sync thread: Completed sync')
                 time.sleep(5)
+                if STOP_SYNC_THREAD:
+                    self.logger.info(f'Exiting sync thread')
+                    return
         except Exception as e:
-            print(f'THREAD: {e}', flush=True)
+            self.logger.error(f'Sync thread failed: {e}')
