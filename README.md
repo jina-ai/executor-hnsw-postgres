@@ -39,6 +39,9 @@ You can perform all the usual operations on the respective endpoints
 - `/index`. Add new data to PostgreSQL
 - `/search`. Query the HNSW index with your Documents.
 - `/update`. Update documents in PostgreSQL
-- `/delete`. Delete documents in PostgreSQL. **Note**. This only performs soft-deletion by default. This is done in order to not break the look-up of the document id after doing a search. For a hard delete, add `'soft_delete': False'` to `parameters`. You might also perform a cleanup after a full rebuild of the HNSW index, by calling `/cleanup`.
+- `/delete`. Delete documents in PostgreSQL. 
 
-
+**Note**. This only performs soft-deletion by default. 
+This is done in order to not break the look-up of the document id after doing a search. 
+For a hard delete, add `'soft_delete': False'` to `parameters`. 
+You might also perform a cleanup after a full rebuild of the HNSW index, by calling `/cleanup`.
