@@ -309,10 +309,12 @@ class HNSWPostgresIndexer(Executor):
         if self._kv_indexer and self._vec_indexer:
             self._vec_indexer.search(docs, parameters)
             kv_parameters = copy.deepcopy(parameters)
-            kv_parameters['traversal_paths'] = [
-                path + 'm'
-                for path in kv_parameters.get('traversal_paths', 'r').split(',')
-            ]
+            kv_parameters['traversal_paths'] = ','.join(
+                [
+                    path + 'm'
+                    for path in kv_parameters.get('traversal_paths', 'r').split(',')
+                ]
+            )
             self._kv_indexer.search(docs, kv_parameters)
         else:
             self.logger.warning('Indexers have not been initialized. Empty results')
