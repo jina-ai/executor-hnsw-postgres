@@ -44,6 +44,7 @@ class HNSWPostgresIndexer(Executor):
         ef_query: int = 50,
         max_connection: int = 64,
         is_distance: bool = True,
+        num_threads: int = -1,
         traversal_paths: Iterable[str] = ('r',),
         hostname: str = '127.0.0.1',
         port: int = 5432,
@@ -54,6 +55,7 @@ class HNSWPostgresIndexer(Executor):
         return_embeddings: bool = True,
         dry_run: bool = False,
         partitions: int = 128,
+        mute_unique_warnings: bool = False,
         **kwargs,
     ):
         """
@@ -73,6 +75,7 @@ class HNSWPostgresIndexer(Executor):
         :param is_distance: (HNSW) if distance metric needs to be reinterpreted as
         similarity
         :param last_timestamp: (HNSW) the last time we synced into this HNSW index
+        :param num_threads: (HNSW) nr of threads to use during indexing. -1 is default
         :param traversal_paths: (PSQL) default traversal paths on docs
         (used for indexing, delete and update), e.g. ['r'], ['c']
         :param hostname: (PSQL) hostname of the machine
@@ -86,6 +89,8 @@ class HNSWPostgresIndexer(Executor):
         :param dry_run: (PSQL) If True, no database connection will be built
         :param partitions: (PSQL) the number of shards to distribute
          the data (used when syncing into HNSW)
+        :param mute_unique_warnings: (PSQL) whether to mute warnings about unique
+        ids constraint failing (useful when indexing with shards and polling = 'all')
 
         NOTE:
 
@@ -140,10 +145,17 @@ class HNSWPostgresIndexer(Executor):
             incremental syncing
             - 'timestamp' (str): ISO-formatted timestamp string. Time
             from which to get data for syncing into HNSW
+            - 'batch_size' (int): The batch size for indexing in HNSW
         """
         self._sync(**parameters)
 
-    def _sync(self, rebuild: bool = False, timestamp: str = None, **kwargs):
+    def _sync(
+        self,
+        rebuild: bool = False,
+        timestamp: str = None,
+        batch_size: int = 100,
+        **kwargs,
+    ):
         if timestamp is None:
             if rebuild:
                 timestamp = datetime.min
@@ -159,15 +171,19 @@ class HNSWPostgresIndexer(Executor):
         else:
             timestamp = datetime.fromisoformat(timestamp)
 
-        if rebuild or self._vec_indexer is None:
-            self._vec_indexer = HnswlibSearcher(**self._init_kwargs)
-
         iterator = self._kv_indexer._get_delta(
             shard_id=self.runtime_args.pea_id,
             total_shards=self.total_shards,
             timestamp=timestamp,
         )
-        self._vec_indexer.sync(iterator)
+
+        if rebuild or self._vec_indexer.size == 0:
+            # call with just indexing
+            self._vec_indexer = HnswlibSearcher(**self._init_kwargs)
+            self._vec_indexer.index_sync(iterator, batch_size)
+
+        else:
+            self._vec_indexer.sync(iterator)
 
     def _init_executors(
         self, _init_kwargs
@@ -228,8 +244,12 @@ class HNSWPostgresIndexer(Executor):
         Delete data from PSQL and HNSW
 
         """
-        self._kv_indexer.clear()
+        if self._kv_indexer.initialized:
+            self._kv_indexer.clear()
         self._vec_indexer = HnswlibSearcher(**self._init_kwargs)
+        self._vec_indexer.clear()
+        assert self._kv_indexer.size == 0
+        assert self._vec_indexer.size == 0
 
     @requests(on='/status')
     def status(self, **kwargs):

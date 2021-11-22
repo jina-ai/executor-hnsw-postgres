@@ -44,3 +44,9 @@ def test_docker(docker_compose, get_documents, runtime_args):
     indexer.sync({})
     indexer.search(search_docs, {})
     assert len(search_docs[0].matches) > 0
+
+    indexer.clear()
+    status_response = indexer.status()
+    status = dict(status_response[0].tags)
+    assert status['psql_docs'] == 0
+    assert status['hnsw_docs'] == 0

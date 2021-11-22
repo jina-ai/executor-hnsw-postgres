@@ -37,6 +37,9 @@ class PostgreSQLHandler:
     :param dry_run: If True, no database connection will be build
     :param partitions: the number of shards to
     distribute the data (used when rolling update on Searcher side)
+    :param mute_unique_warnings: whether to mute warnings about unique
+    ids constraint failing (useful when indexing with shards and
+    polling = 'all')
     :param args: other arguments
     :param kwargs: other keyword arguments
     """
@@ -53,6 +56,7 @@ class PostgreSQLHandler:
         dump_dtype: type = np.float64,
         dry_run: bool = False,
         partitions: int = 128,
+        mute_unique_warnings: bool = False,
         *args,
         **kwargs,
     ):
@@ -62,6 +66,7 @@ class PostgreSQLHandler:
         self.dump_dtype = dump_dtype
         self.partitions = partitions
         self.snapshot_table = 'snapshot'
+        self.mute_unique_warnings = mute_unique_warnings
 
         if not dry_run:
             self.postgreSQL_pool = psycopg2.pool.SimpleConnectionPool(
@@ -205,10 +210,11 @@ class PostgreSQLHandler:
                 ],
             )
         except psycopg2.errors.UniqueViolation as e:
-            self.logger.warning(
-                f'Document already exists in PSQL database.'
-                f' {e}. Skipping entire transaction...'
-            )
+            if not self.mute_unique_warnings:
+                self.logger.warning(
+                    f'Document already exists in PSQL database.'
+                    f' {e}. Skipping entire transaction...'
+                )
             self.connection.rollback()
         self.connection.commit()
 
