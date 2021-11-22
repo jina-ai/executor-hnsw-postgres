@@ -62,6 +62,7 @@ class HnswlibSearcher:
         :param is_distance: Boolean flag that describes if distance metric need to
         be reinterpreted as similarities.
         :param last_timestamp: the last time we synced into this HNSW index
+        :param num_threads: nr of threads to use during indexing. -1 is default
         """
         self.limit = limit
         self.metric = metric
