@@ -4,6 +4,7 @@ __license__ = "Apache-2.0"
 import copy
 import inspect
 from datetime import datetime
+from threading import Thread
 from typing import Optional, Tuple, Dict, Iterable
 
 import numpy as np
@@ -36,6 +37,7 @@ class HNSWPostgresIndexer(Executor):
         self,
         total_shards: Optional[int] = None,
         startup_sync: bool = True,
+        auto_sync: bool = False,
         limit: int = 10,
         metric: str = DEFAULT_METRIC,
         dim: int = 0,
@@ -131,6 +133,9 @@ class HNSWPostgresIndexer(Executor):
         ) = self._init_executors(self._init_kwargs)
         if startup_sync:
             self._sync()
+
+        if auto_sync:
+            self._start_auto_sync()
 
     @requests(on='/sync')
     def sync(self, parameters: Dict, **kwargs):
@@ -330,3 +335,22 @@ class HNSWPostgresIndexer(Executor):
             self._kv_indexer.cleanup()
         else:
             self.logger.warning(f'PSQL has not been initialized')
+
+    def _start_auto_sync(self):
+        self.sync_thread = Thread(target=self._sync_loop, args=(self,), daemon=True)
+        self.sync_thread.start()
+
+    def close(self) -> None:
+        if hasattr(self, 'sync_thread'):
+            try:
+                self.sync_thread.join(1)
+            except Exception as e:
+                self.logger.warning(f'Error when stopping sync thread: {e}')
+
+    def _sync_loop(self):
+        try:
+            self.logger.warning(f'started sync loop')
+            while True:
+                self._sync(rebuild=False)
+        except Exception as e:
+            print(f'THREAD: {e}', flush=True)
