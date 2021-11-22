@@ -239,10 +239,22 @@ class HNSWPostgresIndexer(Executor):
         :return: DocumentArray with one Document with tags 'psql_docs', 'hnsw_docs',
         'last_sync', 'pea_id'
         """
-        psql_docs = self._kv_indexer.size
-        hnsw_docs = self._vec_indexer.size
-        last_sync = self._vec_indexer.last_timestamp
-        last_sync = last_sync.isoformat()
+        psql_docs = None
+        hnsw_docs = None
+        last_sync = None
+
+        if self._kv_indexer and self._kv_indexer.initialized:
+            psql_docs = self._kv_indexer.size
+        else:
+            self.logger.warning(f'PSQL connection has not been initialized')
+
+        if self._vec_indexer:
+            hnsw_docs = self._vec_indexer.size
+            last_sync = self._vec_indexer.last_timestamp
+            last_sync = last_sync.isoformat()
+        else:
+            self.logger.warning(f'HNSW index has not been initialized')
+
         status = {
             'psql_docs': psql_docs,
             'hnsw_docs': hnsw_docs,
@@ -284,3 +296,14 @@ class HNSWPostgresIndexer(Executor):
         else:
             self.logger.warning('Indexers have not been initialized. Empty results')
             return
+
+    @requests(on='/cleanup')
+    def cleanup(self, **kwargs):
+        """
+        Completely remove the entries in PSQL that have been
+        soft-deleted (via the /delete endpoint)
+        """
+        if self._kv_indexer:
+            self._kv_indexer.cleanup()
+        else:
+            self.logger.warning(f'PSQL has not been initialized')

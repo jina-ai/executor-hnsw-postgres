@@ -74,6 +74,12 @@ class PostgreSQLHandler:
                 port=port,
             )
             self._init_table()
+        else:
+            self.logger.info(
+                'PSQL started in dry run mode. Will not connect to '
+                'PSQL service. Needs to be restarted to connect '
+                'again, with `dry_run=False`'
+            )
 
     def __enter__(self):
         self.connection = self._get_connection()
@@ -239,9 +245,8 @@ class PostgreSQLHandler:
         have been marked for soft-deletion
         """
         cursor = self.connection.cursor()
-        psycopg2.extras.execute_batch(
-            cursor,
-            f'DELETE FROM {self.table} ' f'WHERE doc == NULL',
+        cursor.execute(
+            f'DELETE FROM {self.table} WHERE doc is NULL',
         )
         self.connection.commit()
         return
@@ -466,3 +471,10 @@ class PostgreSQLHandler:
         cursor.execute(f'DELETE FROM {self.table}')
         self.connection.commit()
         return
+
+    @property
+    def initialized(self, **kwargs):
+        """
+        Whether the PSQL connection has been initialized
+        """
+        return hasattr(self, 'postgreSQL_pool')
