@@ -36,7 +36,7 @@ class HnswlibSearcher:
         ef_query: int = 50,
         max_connection: int = 16,
         dump_path: Optional[str] = None,
-        traversal_paths: Iterable[str] = ('r',),
+        traversal_paths: str = 'r',
         is_distance: bool = True,
         last_timestamp: datetime = datetime.min,
         num_threads: int = -1,
@@ -57,8 +57,7 @@ class HnswlibSearcher:
         :param dump_path: The path to the directory from where to load, and where to
             save the index state
         :param traversal_paths: The default traversal path on docs (used for
-        indexing,
-            search and update), e.g. ['r'], ['c']
+        indexing, search and update), e.g. 'r', 'c', 'r,c'
         :param is_distance: Boolean flag that describes if distance metric need to
         be reinterpreted as similarities.
         :param last_timestamp: the last time we synced into this HNSW index
