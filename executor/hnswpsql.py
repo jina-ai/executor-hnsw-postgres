@@ -16,8 +16,6 @@ from jina.logging.logger import JinaLogger
 from .hnswlib_searcher import HnswlibSearcher, DEFAULT_METRIC
 from .postgres_indexer import PostgreSQLStorage
 
-STOP_SYNC_THREAD = False
-
 
 def _get_method_args():
     frame = inspect.currentframe().f_back
@@ -352,10 +350,9 @@ class HNSWPostgresIndexer(Executor):
         self.sync_thread.start()
 
     def close(self) -> None:
-        global STOP_SYNC_THREAD
-
         if hasattr(self, 'sync_thread'):
-            STOP_SYNC_THREAD = True
+            # wait for sync thread to finish
+            self.stop_sync_thread = True
             try:
                 while self.sync_thread.is_alive():
                     time.sleep(2)
@@ -363,14 +360,13 @@ class HNSWPostgresIndexer(Executor):
                 self.logger.warning(f'Error when stopping sync thread: {e}')
 
     def _sync_loop(self):
-        global STOP_SYNC_THREAD
         try:
             self.logger.warning(f'started sync thread')
             while True:
                 self._sync(rebuild=False, timestamp=None, batch_size=100)
                 self.logger.info(f'sync thread: Completed sync')
                 time.sleep(5)
-                if STOP_SYNC_THREAD:
+                if self.stop_sync_thread:
                     self.logger.info(f'Exiting sync thread')
                     return
         except Exception as e:
