@@ -19,7 +19,6 @@ def test_sync(docker_compose, get_documents):
         result_docs = result[0].docs
         first_hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
         psql_docs = int(result_docs[0].tags['psql_docs'])
-        print(f'## psql_docs = {psql_docs}; hnsw = {first_hnsw_docs}')
         assert psql_docs >= expected_size_min
         assert int(first_hnsw_docs) >= expected_size_min
         status = result_docs[0].tags['last_sync']
@@ -30,7 +29,7 @@ def test_sync(docker_compose, get_documents):
     nr_docs_batch = 3
     nr_runs = 4
 
-    uses_with = {'dim': emb_size, 'auto_sync': True}
+    uses_with = {'dim': emb_size, 'sync_interval': 5}
     search_docs = DocumentArray(
         get_documents(index_start=nr_docs_batch * (nr_runs + 1), emb_size=emb_size)
     )
@@ -57,4 +56,5 @@ def test_sync(docker_compose, get_documents):
             search_docs = result[0].docs
             assert len(search_docs[0].matches) > nr_indexed_docs
             nr_indexed_docs, last_sync_timestamp = verify_status(f, nr_indexed_docs)
+            assert nr_indexed_docs == (i + 1) * nr_docs_batch
             i += 1

@@ -2,7 +2,7 @@ __copyright__ = "Copyright (c) 2021 Jina AI Limited. All rights reserved."
 __license__ = "Apache-2.0"
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Iterable, Optional, Generator, Tuple, List
 
 import hnswlib
@@ -38,7 +38,7 @@ class HnswlibSearcher:
         dump_path: Optional[str] = None,
         traversal_paths: str = 'r',
         is_distance: bool = True,
-        last_timestamp: datetime = datetime.min,
+        last_timestamp: datetime = datetime.fromtimestamp(0, timezone.utc),
         num_threads: int = -1,
         *args,
         **kwargs,
@@ -386,4 +386,4 @@ class HnswlibSearcher:
                     self._add(this_batch_embeds[:this_batch_size], this_batch_ids)
                 break
 
-        self.last_timestamp = datetime.now()
+        self.last_timestamp = datetime.now(timezone.utc)

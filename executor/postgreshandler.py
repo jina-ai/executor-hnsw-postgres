@@ -476,7 +476,6 @@ class PostgreSQLHandler:
                 (shards_quoted, timestamp),
             )
             for rec in cursor:
-                print(f'psql: yielding one with timestamp {rec[2]}')
                 second_val = (
                     np.frombuffer(rec[1], dtype=self.dump_dtype)
                     if rec[1] is not None

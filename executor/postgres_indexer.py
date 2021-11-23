@@ -5,6 +5,11 @@ import datetime
 from datetime import timezone
 from typing import Dict
 
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo
+
 import numpy as np
 from jina import Document, DocumentArray
 from jina.logging.logger import JinaLogger
@@ -252,16 +257,12 @@ class PostgreSQLStorage:
         """
         Get the rows that have changed since the last timestamp, per shard
         """
-        # TODO timezone issues with timestamp
-        timestamp = timestamp.replace(tzinfo=timezone.utc)
-        last_timestamp = self.last_timestamp
-        print(
-            f'### getting delta with timestamp {timestamp} {timestamp.tzname()}; '
-            f'last data {last_timestamp}; '
-            f'{last_timestamp.tzname() if last_timestamp else None}'
-        )
+        # we assume all db timestamps are UTC +00
+        try:
+            timestamp = timestamp.astimezone(ZoneInfo('UTC'))
+        except ValueError:
+            pass  # year 0 if timestamp is min
         if self.size > 0:
-
             shards_to_get = self._vshards_to_get(
                 shard_id, total_shards, self.partitions
             )

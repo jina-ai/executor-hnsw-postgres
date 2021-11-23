@@ -19,7 +19,9 @@ def test_basic(runtime_args):
     status = dict(indexer.status()[0].tags)
     assert status['psql_docs'] is None
     assert status['hnsw_docs'] == 0.0  # protobuf converts ints to floats
-    assert datetime.datetime.fromisoformat(status['last_sync']) == datetime.datetime.min
+    assert datetime.datetime.fromisoformat(
+        status['last_sync']
+    ) == datetime.datetime.fromtimestamp(0, datetime.timezone.utc)
 
 
 @pytest.mark.parametrize('docker_compose', [compose_yml], indirect=['docker_compose'])
