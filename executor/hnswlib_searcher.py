@@ -355,6 +355,8 @@ class HnswlibSearcher:
                 self.last_timestamp = doc_timestamp
 
     def index_sync(self, iterator: GENERATOR_DELTA, batch_size=100) -> None:
+        # there might be new operations on PSQL in the meantime
+        timestamp = datetime.now(timezone.utc)
         if iterator is None:
             self.logger.warning('No data received in HNSW.sync. Skipping...')
             return
@@ -386,4 +388,4 @@ class HnswlibSearcher:
                     self._add(this_batch_embeds[:this_batch_size], this_batch_ids)
                 break
 
-        self.last_timestamp = datetime.now(timezone.utc)
+        self.last_timestamp = timestamp
