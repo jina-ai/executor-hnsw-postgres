@@ -116,7 +116,8 @@ class HNSWPostgresIndexer(Executor):
         self._init_kwargs = _get_method_args()
         self._init_kwargs.update(kwargs)
         self.sync_interval = sync_interval
-        self.lock = None
+        self.lock = threading.Lock()  # no damage if not using threading but easier
+        # with ctx mger
 
         if total_shards is None:
             self.total_shards = getattr(self.runtime_args, 'parallel', None)
@@ -143,7 +144,6 @@ class HNSWPostgresIndexer(Executor):
             self._sync()
 
         if self.sync_interval:
-            self.lock = threading.Lock()
             self.stop_sync_thread = False
             self._start_auto_sync()
 
@@ -171,50 +171,50 @@ class HNSWPostgresIndexer(Executor):
         batch_size: int = 100,
         **kwargs,
     ):
-        if self.lock:
-            self.lock.acquire(blocking=True, timeout=-1)
-        if timestamp is None:
-            if rebuild:
-                # we assume all db timestamps are UTC +00
-                timestamp = datetime.fromtimestamp(0, timezone.utc)
-            elif self._vec_indexer.last_timestamp:
-                timestamp = self._vec_indexer.last_timestamp
+        # we prevent race conditions with search
+        with self.lock:
+            if timestamp is None:
+                if rebuild:
+                    # we assume all db timestamps are UTC +00
+                    timestamp = datetime.fromtimestamp(0, timezone.utc)
+                elif self._vec_indexer.last_timestamp:
+                    timestamp = self._vec_indexer.last_timestamp
+                else:
+                    self.logger.error(
+                        f'No timestamp provided in parameters: '
+                        f'and vec_indexer.last_timestamp'
+                        f'was None. Cannot do sync'
+                    )
+                    return
             else:
-                self.logger.error(
-                    f'No timestamp provided in parameters: '
-                    f'and vec_indexer.last_timestamp'
-                    f'was None. Cannot do sync'
-                )
-                return
-        else:
-            timestamp = datetime.fromisoformat(timestamp)
+                timestamp = datetime.fromisoformat(timestamp)
 
-        iterator = self._kv_indexer._get_delta(
-            shard_id=self.runtime_args.pea_id,
-            total_shards=self.total_shards,
-            timestamp=timestamp,
-        )
+            iterator = self._kv_indexer._get_delta(
+                shard_id=self.runtime_args.pea_id,
+                total_shards=self.total_shards,
+                timestamp=timestamp,
+            )
 
-        if rebuild or self._vec_indexer.size == 0:
-            # call with just indexing
-            self._vec_indexer = HnswlibSearcher(**self._init_kwargs)
-            self._vec_indexer.index_sync(iterator, batch_size)
-            self.logger.info(f'Rebuilt HNSW index with {self._vec_indexer.size} docs')
-
-        else:
-            prev_size = self._vec_indexer.size
-            self._vec_indexer.sync(iterator)
-            if prev_size != self._vec_indexer.size:
+            if rebuild or self._vec_indexer.size == 0:
+                # call with just indexing
+                self._vec_indexer = HnswlibSearcher(**self._init_kwargs)
+                self._vec_indexer.index_sync(iterator, batch_size)
                 self.logger.info(
-                    f'Synced HNSW index from {prev_size} docs to '
-                    f'{self._vec_indexer.size}'
+                    f'Rebuilt HNSW index with {self._vec_indexer.size} docs'
                 )
+
             else:
-                self.logger.info(
-                    f'Performed empty sync. HNSW index size is still {prev_size}'
-                )
-        if self.lock:
-            self.lock.release()
+                prev_size = self._vec_indexer.size
+                self._vec_indexer.sync(iterator)
+                if prev_size != self._vec_indexer.size:
+                    self.logger.info(
+                        f'Synced HNSW index from {prev_size} docs to '
+                        f'{self._vec_indexer.size}'
+                    )
+                else:
+                    self.logger.info(
+                        f'Performed empty sync. HNSW index size is still {prev_size}'
+                    )
 
     def _init_executors(
         self, _init_kwargs
@@ -338,7 +338,10 @@ class HNSWPostgresIndexer(Executor):
             accurate but slower
         """
         if self._kv_indexer and self._vec_indexer:
-            self._vec_indexer.search(docs, parameters)
+            # we prevent race conditions with sync
+            with self.lock:
+                self._vec_indexer.search(docs, parameters)
+
             kv_parameters = copy.deepcopy(parameters)
             kv_parameters['traversal_paths'] = ','.join(
                 [
