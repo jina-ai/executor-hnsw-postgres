@@ -3,6 +3,7 @@ __license__ = "Apache-2.0"
 
 import copy
 import inspect
+import threading
 import time
 import traceback
 from datetime import datetime, timezone
@@ -114,6 +115,8 @@ class HNSWPostgresIndexer(Executor):
         # but we want to avoid having to manually pass every arg to the classes
         self._init_kwargs = _get_method_args()
         self._init_kwargs.update(kwargs)
+        self.sync_interval = sync_interval
+        self.lock = None
 
         if total_shards is None:
             self.total_shards = getattr(self.runtime_args, 'parallel', None)
@@ -139,10 +142,10 @@ class HNSWPostgresIndexer(Executor):
         if startup_sync:
             self._sync()
 
-        self.sync_interval = sync_interval
         if self.sync_interval:
-            self._start_auto_sync()
+            self.lock = threading.Lock()
             self.stop_sync_thread = False
+            self._start_auto_sync()
 
     @requests(on='/sync')
     def sync(self, parameters: Dict, **kwargs):
@@ -168,6 +171,8 @@ class HNSWPostgresIndexer(Executor):
         batch_size: int = 100,
         **kwargs,
     ):
+        if self.lock:
+            self.lock.acquire(blocking=True, timeout=-1)
         if timestamp is None:
             if rebuild:
                 # we assume all db timestamps are UTC +00
@@ -208,6 +213,8 @@ class HNSWPostgresIndexer(Executor):
                 self.logger.info(
                     f'Performed empty sync. HNSW index size is still {prev_size}'
                 )
+        if self.lock:
+            self.lock.release()
 
     def _init_executors(
         self, _init_kwargs
