@@ -364,8 +364,7 @@ class HNSWPostgresIndexer(Executor):
             # wait for sync thread to finish
             self.stop_sync_thread = True
             try:
-                while self.sync_thread.is_alive():
-                    time.sleep(2)
+                self.sync_thread.join()
             except Exception as e:
                 self.logger.warning(f'Error when stopping sync thread: {e}')
 
