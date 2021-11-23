@@ -3,6 +3,7 @@ __license__ = "Apache-2.0"
 
 import datetime
 import hashlib
+from contextlib import contextmanager
 from typing import Generator, List, Optional, Tuple
 
 import numpy as np
@@ -52,7 +53,7 @@ class PostgreSQLHandler:
         password: str = 'default_pwd',
         database: str = 'postgres',
         table: Optional[str] = 'default_table',
-        max_connections: int = 5,
+        max_connections: int = 10,
         dump_dtype: type = np.float64,
         dry_run: bool = False,
         partitions: int = 128,
@@ -86,41 +87,41 @@ class PostgreSQLHandler:
                 'again, with `dry_run=False`'
             )
 
-    def __enter__(self):
-        self.connection = self._get_connection()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.connection:
-            self._close_connection(self.connection)
-
     def _init_table(self):
         """
         Use table if exists or create one if it doesn't.
 
         Create table if needed with id, vecs and metas.
         """
-        with self:
-            self._create_schema_version()
+        self._create_schema_version()
 
-            if self._table_exists():
-                self._assert_table_schema_version()
-                self.logger.info('Using existing table')
-            else:
-                self._create_table()
+        if self._table_exists():
+            self._assert_table_schema_version()
+            self.logger.info('Using existing table')
+        else:
+            self._create_table()
 
     def _execute_sql_gracefully(self, statement, data=tuple()):
-        try:
-            cursor = self.connection.cursor()
-            if data:
-                cursor.execute(statement, data)
-            else:
-                cursor.execute(statement)
-        except psycopg2.errors.UniqueViolation as error:
-            self.logger.debug(f'Error while executing {statement}: {error}.')
+        with self.get_connection() as connection:
+            records = None
+            try:
+                cursor = connection.cursor()
+                if data:
+                    cursor.execute(statement, data)
+                else:
+                    cursor.execute(statement)
+                if cursor.rowcount:
+                    try:
+                        records = cursor.fetchall()
+                    except psycopg2.ProgrammingError:
+                        # some queries will not have results but still have rowcount
+                        pass
+            except psycopg2.errors.UniqueViolation as error:
+                self.logger.debug(f'Error while executing {statement}: {error}.')
 
-        self.connection.commit()
-        return cursor
+            connection.commit()
+
+            return records
 
     def _create_schema_version(self):
         self._execute_sql_gracefully(
@@ -151,34 +152,35 @@ class PostgreSQLHandler:
             'WHERE table_name=%s'
             ')',
             (self.table,),
-        ).fetchall()[0][0]
+        )[0][0]
 
     def _assert_table_schema_version(self):
-        cursor = self.connection.cursor()
-        cursor.execute(
-            f'SELECT schema_version FROM '
-            f'{SCHEMA_VERSIONS_TABLE_NAME} '
-            f'WHERE table_name=%s;',
-            (self.table,),
-        )
-        result = cursor.fetchone()
-        if result:
-            if result[0] != SCHEMA_VERSION:
+        with self.get_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                f'SELECT schema_version FROM '
+                f'{SCHEMA_VERSIONS_TABLE_NAME} '
+                f'WHERE table_name=%s;',
+                (self.table,),
+            )
+            result = cursor.fetchone()
+            if result:
+                if result[0] != SCHEMA_VERSION:
+                    raise RuntimeError(
+                        f'The schema versions of the database '
+                        f'(version {result[0]}) and the Executor '
+                        f'(version {SCHEMA_VERSION}) do not match. '
+                        f'Please migrate your data to the latest '
+                        f'version or use an Executor version with a '
+                        f'matching schema version.'
+                    )
+            else:
                 raise RuntimeError(
                     f'The schema versions of the database '
-                    f'(version {result[0]}) and the Executor '
-                    f'(version {SCHEMA_VERSION}) do not match. '
-                    f'Please migrate your data to the latest '
-                    f'version or use an Executor version with a '
-                    f'matching schema version.'
+                    f'(NO version number) and the Executor '
+                    f'(version {SCHEMA_VERSION}) do not match.'
+                    f'Please migrate your data to the latest version.'
                 )
-        else:
-            raise RuntimeError(
-                f'The schema versions of the database '
-                f'(NO version number) and the Executor '
-                f'(version {SCHEMA_VERSION}) do not match.'
-                f'Please migrate your data to the latest version.'
-            )
 
     def add(self, docs: DocumentArray, *args, **kwargs):
         """Insert the documents into the database.
@@ -190,33 +192,34 @@ class PostgreSQLHandler:
         :param kwargs: other keyword arguments
         :return record: List of Document's id added
         """
-        cursor = self.connection.cursor()
-        try:
-            psycopg2.extras.execute_batch(
-                cursor,
-                f'INSERT INTO {self.table} '
-                f'(doc_id, embedding, doc, shard, last_updated) '
-                f'VALUES (%s, %s, %s, %s, current_timestamp)',
-                [
-                    (
-                        doc.id,
-                        doc.embedding.astype(self.dump_dtype).tobytes()
-                        if doc.embedding is not None
-                        else None,
-                        doc_without_embedding(doc),
-                        self._get_next_shard(doc.id),
-                    )
-                    for doc in docs
-                ],
-            )
-        except psycopg2.errors.UniqueViolation as e:
-            if not self.mute_unique_warnings:
-                self.logger.warning(
-                    f'Document already exists in PSQL database.'
-                    f' {e}. Skipping entire transaction...'
+        with self.get_connection() as connection:
+            cursor = connection.cursor()
+            try:
+                psycopg2.extras.execute_batch(
+                    cursor,
+                    f'INSERT INTO {self.table} '
+                    f'(doc_id, embedding, doc, shard, last_updated) '
+                    f'VALUES (%s, %s, %s, %s, current_timestamp)',
+                    [
+                        (
+                            doc.id,
+                            doc.embedding.astype(self.dump_dtype).tobytes()
+                            if doc.embedding is not None
+                            else None,
+                            doc_without_embedding(doc),
+                            self._get_next_shard(doc.id),
+                        )
+                        for doc in docs
+                    ],
                 )
-            self.connection.rollback()
-        self.connection.commit()
+            except psycopg2.errors.UniqueViolation as e:
+                if not self.mute_unique_warnings:
+                    self.logger.warning(
+                        f'Document already exists in PSQL database.'
+                        f' {e}. Skipping entire transaction...'
+                    )
+                connection.rollback()
+            connection.commit()
 
     def update(self, docs: DocumentArray, *args, **kwargs):
         """Updated documents from the database.
@@ -226,36 +229,37 @@ class PostgreSQLHandler:
         :param kwargs: other keyword arguments
         :return record: List of Document's id after update
         """
-        cursor = self.connection.cursor()
-        psycopg2.extras.execute_batch(
-            cursor,
-            f'UPDATE {self.table}\
-             SET embedding = %s,\
-             doc = %s,\
-             last_updated = current_timestamp \
-            WHERE doc_id = %s',
-            [
-                (
-                    doc.embedding.astype(self.dump_dtype).tobytes(),
-                    doc_without_embedding(doc),
-                    doc.id,
-                )
-                for doc in docs
-            ],
-        )
-        self.connection.commit()
+        with self.get_connection() as connection:
+            cursor = connection.cursor()
+            psycopg2.extras.execute_batch(
+                cursor,
+                f'UPDATE {self.table}\
+                 SET embedding = %s,\
+                 doc = %s,\
+                 last_updated = current_timestamp \
+                WHERE doc_id = %s',
+                [
+                    (
+                        doc.embedding.astype(self.dump_dtype).tobytes(),
+                        doc_without_embedding(doc),
+                        doc.id,
+                    )
+                    for doc in docs
+                ],
+            )
+            connection.commit()
 
     def cleanup(self):
         """
         Full deletion of the entries that
         have been marked for soft-deletion
         """
-        cursor = self.connection.cursor()
-        cursor.execute(
-            f'DELETE FROM {self.table} WHERE doc is NULL',
-        )
-        self.connection.commit()
-        return
+        with self.get_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                f'DELETE FROM {self.table} WHERE doc is NULL',
+            )
+            connection.commit()
 
     def delete(self, docs: DocumentArray, soft_delete=False, *args, **kwargs):
         """Delete document from the database.
@@ -271,32 +275,44 @@ class PostgreSQLHandler:
         :param kwargs: other keyword arguments
         :return record: List of Document's id after deletion
         """
-        cursor = self.connection.cursor()
-        if soft_delete:
-            self.logger.warning(
-                'Performing soft-delete. Use /cleanup or a hard '
-                'delete to delete the records'
-            )
-            psycopg2.extras.execute_batch(
-                cursor,
-                f'UPDATE {self.table} '
-                f'SET embedding = NULL, '
-                f'doc = NULL, '
-                f'last_updated = current_timestamp '
-                f'WHERE doc_id = %s;',
-                [(doc.id,) for doc in docs],
-            )
-        else:
-            psycopg2.extras.execute_batch(
-                cursor,
-                f'DELETE FROM {self.table} WHERE doc_id = %s;',
-                [(doc.id,) for doc in docs],
-            )
-        self.connection.commit()
-        return
+        with self.get_connection() as connection:
+            cursor = connection.cursor()
+            if soft_delete:
+                self.logger.warning(
+                    'Performing soft-delete. Use /cleanup or a hard '
+                    'delete to delete the records'
+                )
+                psycopg2.extras.execute_batch(
+                    cursor,
+                    f'UPDATE {self.table} '
+                    f'SET embedding = NULL, '
+                    f'doc = NULL, '
+                    f'last_updated = current_timestamp '
+                    f'WHERE doc_id = %s;',
+                    [(doc.id,) for doc in docs],
+                )
+            else:
+                psycopg2.extras.execute_batch(
+                    cursor,
+                    f'DELETE FROM {self.table} WHERE doc_id = %s;',
+                    [(doc.id,) for doc in docs],
+                )
+            connection.commit()
 
     def close(self):
         self.postgreSQL_pool.closeall()
+
+    @contextmanager
+    def get_connection(self):
+        """A ContextManager for quickly getting a  cursor"""
+        try:
+            conn = self._get_connection()
+            with conn:  # ensure commit or rollback
+                yield conn
+        except:
+            raise
+        finally:
+            self._close_connection(conn)
 
     def search(self, docs: DocumentArray, return_embeddings: bool = True, **kwargs):
         """Use the Postgres db as a key-value engine,
@@ -305,24 +321,25 @@ class PostgreSQLHandler:
             embeddings_field = ', embedding '
         else:
             embeddings_field = ''
-        cursor = self.connection.cursor()
-        for doc in docs:
-            # retrieve metadata
-            cursor.execute(
-                f'SELECT doc {embeddings_field} FROM {self.table} WHERE doc_id = %s;',
-                (doc.id,),
-            )
-            result = cursor.fetchone()
-            data = bytes(result[0])
-            retrieved_doc = Document(data)
-            if return_embeddings and result[1] is not None:
-                embedding = np.frombuffer(result[1], dtype=self.dump_dtype)
-                retrieved_doc.embedding = embedding
-            doc.MergeFrom(retrieved_doc)
+        with self.get_connection() as connection:
+            cursor = connection.cursor()
+            for doc in docs:
+                # retrieve metadata
+                cursor.execute(
+                    f'SELECT doc {embeddings_field} FROM {self.table} WHERE doc_id = %s;',
+                    (doc.id,),
+                )
+                result = cursor.fetchone()
+                data = bytes(result[0])
+                retrieved_doc = Document(data)
+                if return_embeddings and result[1] is not None:
+                    embedding = np.frombuffer(result[1], dtype=self.dump_dtype)
+                    retrieved_doc.embedding = embedding
+                doc.MergeFrom(retrieved_doc)
 
     def _close_connection(self, connection):
         # restore it to the pool
-        self.postgreSQL_pool.putconn(connection)
+        self.postgreSQL_pool.putconn(connection, close=False)
 
     def _get_connection(self):
         # by default psycopg2 is not auto-committing
@@ -333,10 +350,11 @@ class PostgreSQLHandler:
         return connection
 
     def get_size(self):
-        cursor = self.connection.cursor()
-        cursor.execute(f'SELECT COUNT(*) FROM {self.table}')
-        records = cursor.fetchall()
-        return records[0][0]
+        with self.get_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(f'SELECT COUNT(*) FROM {self.table}')
+            records = cursor.fetchall()
+            return records[0][0]
 
     def _get_next_shard(self, doc_id: str):
         sha = hashlib.sha256()
@@ -351,122 +369,135 @@ class PostgreSQLHandler:
         1. create table like ... doesn't include data
         2. insert into .. (select ...) doesn't include primary key definitions
         """
-        try:
-            cursor = self.connection.cursor()
-            cursor.execute(
-                f'drop table if exists {self.snapshot_table}; '
-                f'create table {self.snapshot_table} '
-                f'(like {self.table} including all);'
-            )
-            self.connection.commit()
-            cursor = self.connection.cursor()
-            cursor.execute(
-                f'insert into {self.snapshot_table} (select * from {self.table});'
-            )
-            self.connection.commit()
-            self.logger.info('Successfully created snapshot')
-        except (Exception, psycopg2.Error) as error:
-            self.logger.error(f'Error snapshotting: {error}')
-            self.connection.rollback()
+        with self.get_connection() as connection:
+            try:
+                cursor = connection.cursor()
+                cursor.execute(
+                    f'drop table if exists {self.snapshot_table}; '
+                    f'create table {self.snapshot_table} '
+                    f'(like {self.table} including all);'
+                )
+                connection.commit()
+                cursor = connection.cursor()
+                cursor.execute(
+                    f'insert into {self.snapshot_table} (select * from {self.table});'
+                )
+                connection.commit()
+                self.logger.info('Successfully created snapshot')
+            except (Exception, psycopg2.Error) as error:
+                self.logger.error(f'Error snapshotting: {error}')
+                connection.rollback()
 
-    def get_snapshot(self, shards_to_get: List[int]):
+    def get_snapshot(self, shards_to_get: List[str]):
         """
         Get the data from the snapshot, for a specific range of virtual shards
         """
         shards_quoted = tuple(int(shard) for shard in shards_to_get)
-        try:
-            cursor = self.connection.cursor('snapshot')
-            cursor.itersize = 10000
-            cursor.execute(
-                f'SELECT doc_id, embedding from {self.snapshot_table} '
-                f'WHERE shard in %s '
-                f'ORDER BY doc_id',
-                (shards_quoted,),
-            )
-            for rec in cursor:
-                vec = (
-                    np.frombuffer(rec[1], dtype=self.dump_dtype)
-                    if rec[1] is not None
-                    else None
+        with self.get_connection() as connection:
+            try:
+                cursor = connection.cursor('snapshot')
+                cursor.itersize = 10000
+                cursor.execute(
+                    f'SELECT doc_id, embedding from {self.snapshot_table} '
+                    f'WHERE shard in %s '
+                    f'ORDER BY doc_id',
+                    (shards_quoted,),
                 )
-                yield rec[0], vec
-        except (Exception, psycopg2.Error) as error:
-            self.logger.error(f'Error importing snapshot: {error}')
-            self.connection.rollback()
-        self.connection.commit()
+                for rec in cursor:
+                    vec = (
+                        np.frombuffer(rec[1], dtype=self.dump_dtype)
+                        if rec[1] is not None
+                        else None
+                    )
+                    yield rec[0], vec
+            except (Exception, psycopg2.Error) as error:
+                self.logger.error(f'Error importing snapshot: {error}')
+                connection.rollback()
+            connection.commit()
 
     def get_generator(
         self, include_metas=True
     ) -> Generator[Tuple[str, bytes, Optional[bytes]], None, None]:
-        connection = self._get_connection()
-        cursor = connection.cursor('generator')  # server-side cursor
-        cursor.itersize = 10000
-        if include_metas:
-            cursor.execute(
-                f'SELECT doc_id, embedding, doc FROM {self.table} ORDER BY doc_id'
-            )
-            for rec in cursor:
-                yield rec[0], np.frombuffer(rec[1]) if rec[
-                    1
-                ] is not None else None, rec[2]
-        else:
-            cursor.execute(
-                f'SELECT doc_id, embedding FROM {self.table} ORDER BY doc_id'
-            )
-            for rec in cursor:
-                yield rec[0], np.frombuffer(rec[1]) if rec[
-                    1
-                ] is not None else None, None
-        self._close_connection(connection)
+        with self.get_connection() as connection:
+            cursor = connection.cursor('generator')  # server-side cursor
+            cursor.itersize = 10000
+            if include_metas:
+                cursor.execute(
+                    f'SELECT doc_id, embedding, doc FROM {self.table} ORDER BY doc_id'
+                )
+                for rec in cursor:
+                    yield rec[0], np.frombuffer(rec[1]) if rec[
+                        1
+                    ] is not None else None, rec[2]
+            else:
+                cursor.execute(
+                    f'SELECT doc_id, embedding FROM {self.table} ORDER BY doc_id'
+                )
+                for rec in cursor:
+                    yield rec[0], np.frombuffer(rec[1]) if rec[
+                        1
+                    ] is not None else None, None
 
     def _get_snapshot_timestamp(self):
         """Get the timestamp of the snapshot"""
-        connection = self._get_connection()
-        cursor = connection.cursor()
-        try:
-            cursor.execute(f'SELECT MAX(last_updated) FROM {self.snapshot_table}')
-            for rec in cursor:
-                return rec[0]
-        except Exception as e:
-            self.logger.error(f'Could not obtain timestamp from snapshot: {e}')
+        with self.get_connection() as connection:
+            cursor = connection.cursor()
+            try:
+                cursor.execute(f'SELECT MAX(last_updated) FROM {self.snapshot_table}')
+                for rec in cursor:
+                    yield rec[0]
+            except Exception as e:
+                self.logger.error(f'Could not obtain timestamp from snapshot: {e}')
+
+    def _get_data_timestamp(self):
+        """Get the timestamp of the data"""
+        with self.get_connection() as connection:
+            cursor = connection.cursor()
+            try:
+                cursor.execute(f'SELECT MAX(last_updated) FROM {self.table}')
+                for rec in cursor:
+                    yield rec[0]
+            except Exception as e:
+                self.logger.error(f'Could not obtain timestamp from data: {e}')
 
     def _get_delta(
         self, shards_to_get, timestamp
     ) -> Generator[Tuple[str, bytes, datetime.datetime], None, None]:
-        connection = self._get_connection()
-        cursor = connection.cursor('generator')  # server-side cursor
-        cursor.itersize = 10000
-        shards_quoted = tuple(int(shard) for shard in shards_to_get)
-        cursor.execute(
-            f'SELECT doc_id, embedding, last_updated '
-            f'from {self.table} '
-            f'WHERE shard in %s '
-            f'and last_updated > %s '
-            f'ORDER BY doc_id',
-            (shards_quoted, timestamp),
-        )
-        for rec in cursor:
-            print(f'psql: yielding one with timestamp {rec[2]}')
-            second_val = (
-                np.frombuffer(rec[1], dtype=self.dump_dtype)
-                if rec[1] is not None
-                else None
+        with self.get_connection() as connection:
+            cursor = connection.cursor('generator')  # server-side cursor
+            cursor.itersize = 10000
+            shards_quoted = tuple(int(shard) for shard in shards_to_get)
+            cursor.execute(
+                f'SELECT doc_id, embedding, last_updated '
+                f'from {self.table} '
+                f'WHERE shard in %s '
+                f'and last_updated > %s '
+                f'ORDER BY doc_id',
+                (shards_quoted, timestamp),
             )
-            yield rec[0], second_val, rec[2]
-        self._close_connection(connection)
+            for rec in cursor:
+                print(f'psql: yielding one with timestamp {rec[2]}')
+                second_val = (
+                    np.frombuffer(rec[1], dtype=self.dump_dtype)
+                    if rec[1] is not None
+                    else None
+                )
+                yield rec[0], second_val, rec[2]
 
     def get_snapshot_size(self):
         """
         Get the size of the snapshot, if it exists.
         else 0
         """
-        try:
-            cursor = self.connection.cursor()
-            cursor.execute(f'SELECT COUNT(*) FROM {self.snapshot_table}')
-            records = cursor.fetchall()
-            return records[0][0]
-        except Exception as e:
-            self.logger.warning(f'Could not get size of snapshot: {e}')
+        with self.get_connection() as connection:
+            try:
+                cursor = connection.cursor()
+                cursor.execute(f'SELECT COUNT(*) FROM {self.snapshot_table}')
+                records = cursor.fetchall()
+                return records[0][0]
+            except Exception as e:
+                self.logger.warning(f'Could not get size of snapshot: {e}')
+
         return 0
 
     def clear(self):
@@ -474,10 +505,10 @@ class PostgreSQLHandler:
         Full hard-deletion of the entries
         :return:
         """
-        cursor = self.connection.cursor()
-        cursor.execute(f'DELETE FROM {self.table}')
-        self.connection.commit()
-        return
+        with self.get_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(f'DELETE FROM {self.table}')
+            connection.commit()
 
     @property
     def initialized(self, **kwargs):

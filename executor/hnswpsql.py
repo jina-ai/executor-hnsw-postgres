@@ -4,6 +4,7 @@ __license__ = "Apache-2.0"
 import copy
 import inspect
 import time
+import traceback
 from datetime import datetime
 from threading import Thread
 from typing import Optional, Tuple, Dict, Iterable
@@ -374,3 +375,4 @@ class HNSWPostgresIndexer(Executor):
                     return
         except Exception as e:
             self.logger.error(f'Sync thread failed: {e}')
+            self.logger.error(traceback.format_exc())
