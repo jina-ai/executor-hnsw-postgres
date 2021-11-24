@@ -8,7 +8,7 @@ import time
 import traceback
 from datetime import datetime, timezone
 from threading import Thread
-from typing import Optional, Tuple, Dict, Iterable
+from typing import Optional, Tuple, Dict, Iterable, Union
 
 import numpy as np
 from jina import Executor, requests, DocumentArray, Document
@@ -171,30 +171,20 @@ class HNSWPostgresIndexer(Executor):
         batch_size: int = 100,
         **kwargs,
     ):
+        timestamp: Optional[datetime] = self._compute_timestamp_for_sync(
+            timestamp, rebuild
+        )
+        if timestamp is None:
+            return
+
+        iterator = self._kv_indexer._get_delta(
+            shard_id=self.runtime_args.pea_id,
+            total_shards=self.total_shards,
+            timestamp=timestamp,
+        )
+
         # we prevent race conditions with search
         with self.lock:
-            if timestamp is None:
-                if rebuild:
-                    # we assume all db timestamps are UTC +00
-                    timestamp = datetime.fromtimestamp(0, timezone.utc)
-                elif self._vec_indexer.last_timestamp:
-                    timestamp = self._vec_indexer.last_timestamp
-                else:
-                    self.logger.error(
-                        f'No timestamp provided in parameters: '
-                        f'and vec_indexer.last_timestamp'
-                        f'was None. Cannot do sync'
-                    )
-                    return
-            else:
-                timestamp = datetime.fromisoformat(timestamp)
-
-            iterator = self._kv_indexer._get_delta(
-                shard_id=self.runtime_args.pea_id,
-                total_shards=self.total_shards,
-                timestamp=timestamp,
-            )
-
             if rebuild or self._vec_indexer.size == 0:
                 # call with just indexing
                 self._vec_indexer = HnswlibSearcher(**self._init_kwargs)
@@ -391,3 +381,24 @@ class HNSWPostgresIndexer(Executor):
         except Exception as e:
             self.logger.error(f'Sync thread failed: {e}')
             self.logger.error(traceback.format_exc())
+
+    def _compute_timestamp_for_sync(
+        self, timestamp: Union[datetime, str], rebuild: bool
+    ) -> Optional[datetime]:
+        if timestamp is None:
+            if rebuild:
+                # we assume all db timestamps are UTC +00
+                timestamp = datetime.fromtimestamp(0, timezone.utc)
+            elif self._vec_indexer.last_timestamp:
+                timestamp = self._vec_indexer.last_timestamp
+            else:
+                self.logger.error(
+                    f'No timestamp provided in parameters: '
+                    f'and vec_indexer.last_timestamp'
+                    f'was None. Cannot do sync'
+                )
+                return None
+        else:
+            timestamp = datetime.fromisoformat(timestamp)
+
+        return timestamp
