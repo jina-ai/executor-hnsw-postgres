@@ -4,3 +4,4 @@ pytest-mock
 hnswlib==0.5.2
 bidict==0.21.3
 pre-commit
+backports.zoneinfo==0.2.1

@@ -1,7 +1,14 @@
 __copyright__ = 'Copyright (c) 2021 Jina AI Limited. All rights reserved.'
 __license__ = 'Apache-2.0'
 
-from typing import Dict, List
+import datetime
+from datetime import timezone
+from typing import Dict
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo
 
 import numpy as np
 from jina import Document, DocumentArray
@@ -90,8 +97,7 @@ class PostgreSQLStorage:
 
         .. # noqa: DAR201
         """
-        with self.handler as postgres_handler:
-            return postgres_handler.get_size()
+        return self.handler.get_size()
 
     @property
     def snapshot_size(self):
@@ -99,8 +105,7 @@ class PostgreSQLStorage:
 
         .. # noqa: DAR201
         """
-        with self.handler as postgres_handler:
-            return postgres_handler.get_snapshot_size()
+        return self.handler.get_snapshot_size()
 
     def add(self, docs: DocumentArray, parameters: Dict, **kwargs):
         """Add Documents to Postgres
@@ -113,8 +118,7 @@ class PostgreSQLStorage:
         traversal_paths = parameters.get(
             'traversal_paths', self.default_traversal_paths
         )
-        with self.handler as postgres_handler:
-            postgres_handler.add(docs.traverse_flat(traversal_paths))
+        self.handler.add(docs.traverse_flat(traversal_paths))
 
     def update(self, docs: DocumentArray, parameters: Dict, **kwargs):
         """Updated document from the database.
@@ -127,16 +131,14 @@ class PostgreSQLStorage:
         traversal_paths = parameters.get(
             'traversal_paths', self.default_traversal_paths
         )
-        with self.handler as postgres_handler:
-            postgres_handler.update(docs.traverse_flat(traversal_paths))
+        self.handler.update(docs.traverse_flat(traversal_paths))
 
     def cleanup(self, **kwargs):
         """
         Full deletion of the entries that
         have been marked for soft-deletion
         """
-        with self.handler as postgres_handler:
-            postgres_handler.cleanup()
+        self.handler.cleanup()
 
     def delete(self, docs: DocumentArray, parameters: Dict, **kwargs):
         """Delete document from the database.
@@ -155,8 +157,7 @@ class PostgreSQLStorage:
             'traversal_paths', self.default_traversal_paths
         )
         soft_delete = parameters.get('soft_delete', False)
-        with self.handler as postgres_handler:
-            postgres_handler.delete(docs.traverse_flat(traversal_paths), soft_delete)
+        self.handler.delete(docs.traverse_flat(traversal_paths), soft_delete)
 
     def dump(self, parameters: Dict, **kwargs):
         """Dump the index
@@ -173,13 +174,12 @@ class PostgreSQLStorage:
 
         include_metas = parameters.get('include_metas', True)
 
-        with self.handler as postgres_handler:
-            export_dump_streaming(
-                path,
-                shards=shards,
-                size=self.size,
-                data=postgres_handler.get_generator(include_metas=include_metas),
-            )
+        export_dump_streaming(
+            path,
+            shards=shards,
+            size=self.size,
+            data=self.handler.get_generator(include_metas=include_metas),
+        )
 
     def close(self) -> None:
         """
@@ -201,13 +201,12 @@ class PostgreSQLStorage:
             'traversal_paths', self.default_traversal_paths
         )
 
-        with self.handler as postgres_handler:
-            postgres_handler.search(
-                docs.traverse_flat(traversal_paths),
-                return_embeddings=parameters.get(
-                    'return_embeddings', self.default_return_embeddings
-                ),
-            )
+        self.handler.search(
+            docs.traverse_flat(traversal_paths),
+            return_embeddings=parameters.get(
+                'return_embeddings', self.default_return_embeddings
+            ),
+        )
 
     def snapshot(self, **kwargs):
         """
@@ -215,8 +214,7 @@ class PostgreSQLStorage:
         """
         # TODO argument with table name, database location
         # maybe send to another PSQL instance to avoid perf hit?
-        with self.handler as postgres_handler:
-            postgres_handler.snapshot()
+        self.handler.snapshot()
 
     def get_snapshot(self, shard_id: int, total_shards: int):
         """Get the data meant out of the snapshot, distributed
@@ -228,8 +226,7 @@ class PostgreSQLStorage:
                 shard_id, total_shards, self.partitions
             )
 
-            with self.handler as postgres_handler:
-                return postgres_handler.get_snapshot(shards_to_get)
+            return self.handler.get_snapshot(shards_to_get)
         else:
             self.logger.warning('Not data in PSQL db snapshot. Nothing to export...')
         return None
@@ -256,29 +253,38 @@ class PostgreSQLStorage:
             ]
         return [str(shard_id) for shard_id in shards_to_get]
 
-    def _get_delta(self, shard_id, total_shards, timestamp):
+    def _get_delta(self, shard_id, total_shards, timestamp: datetime.datetime):
         """
         Get the rows that have changed since the last timestamp, per shard
         """
+        # we assume all db timestamps are UTC +00
+        try:
+            timestamp = timestamp.astimezone(ZoneInfo('UTC'))
+        except ValueError:
+            pass  # year 0 if timestamp is min
         if self.size > 0:
-
             shards_to_get = self._vshards_to_get(
                 shard_id, total_shards, self.partitions
             )
 
-            with self.handler as postgres_handler:
-                return postgres_handler._get_delta(shards_to_get, timestamp)
+            return self.handler._get_delta(shards_to_get, timestamp)
         else:
             self.logger.warning('No data in PSQL to sync into HNSW. Skipping')
         return None
 
     @property
-    def last_snapshot_timestamp(self):
+    def last_snapshot_timestamp(self) -> datetime.datetime:
         """
         Get the timestamp of the snapshot
         """
-        with self.handler as postgres_handler:
-            return postgres_handler._get_snapshot_timestamp()
+        return next(self.handler._get_snapshot_timestamp())
+
+    @property
+    def last_timestamp(self) -> datetime.datetime:
+        """
+        Get the latest timestamp of the data
+        """
+        return next(self.handler._get_data_timestamp())
 
     def clear(self, **kwargs):
         """
@@ -286,8 +292,7 @@ class PostgreSQLStorage:
         :param kwargs:
         :return:
         """
-        with self.handler as postgres_handler:
-            postgres_handler.clear()
+        self.handler.clear()
 
     @property
     def initialized(self, **kwargs):

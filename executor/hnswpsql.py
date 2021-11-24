@@ -3,8 +3,13 @@ __license__ = "Apache-2.0"
 
 import copy
 import inspect
-from datetime import datetime
-from typing import Optional, Tuple, Dict, Iterable
+import threading
+import time
+import traceback
+from contextlib import nullcontext
+from datetime import datetime, timezone
+from threading import Thread
+from typing import Optional, Tuple, Dict, Iterable, Union
 
 import numpy as np
 from jina import Executor, requests, DocumentArray, Document
@@ -36,6 +41,7 @@ class HNSWPostgresIndexer(Executor):
         self,
         total_shards: Optional[int] = None,
         startup_sync: bool = True,
+        sync_interval: Optional[int] = None,
         limit: int = 10,
         metric: str = DEFAULT_METRIC,
         dim: int = 0,
@@ -61,6 +67,9 @@ class HNSWPostgresIndexer(Executor):
         """
         :param startup_sync: whether to sync from PSQL into HNSW on start-up
         :param total_shards: the total nr of shards that this shard is part of.
+        :param sync_interval: the interval between automatic background PSQL-HNSW
+        syncs
+        (if None, sync will be turned off)
         :param limit: (HNSW) Number of results to get for each query document in
         search
         :param metric: (HNSW) Distance metric type. Can be 'euclidean',
@@ -107,6 +116,8 @@ class HNSWPostgresIndexer(Executor):
         # but we want to avoid having to manually pass every arg to the classes
         self._init_kwargs = _get_method_args()
         self._init_kwargs.update(kwargs)
+        self.sync_interval = sync_interval
+        self.lock = nullcontext()
 
         if total_shards is None:
             self.total_shards = getattr(self.runtime_args, 'parallel', None)
@@ -132,6 +143,11 @@ class HNSWPostgresIndexer(Executor):
         if startup_sync:
             self._sync()
 
+        if self.sync_interval:
+            self.lock = threading.Lock()
+            self.stop_sync_thread = False
+            self._start_auto_sync()
+
     @requests(on='/sync')
     def sync(self, parameters: Dict, **kwargs):
         """
@@ -156,20 +172,11 @@ class HNSWPostgresIndexer(Executor):
         batch_size: int = 100,
         **kwargs,
     ):
+        timestamp: Optional[datetime] = self._compute_timestamp_for_sync(
+            timestamp, rebuild
+        )
         if timestamp is None:
-            if rebuild:
-                timestamp = datetime.min
-            elif self._vec_indexer.last_timestamp:
-                timestamp = self._vec_indexer.last_timestamp
-            else:
-                self.logger.error(
-                    f'No timestamp provided in parameters: '
-                    f'and vec_indexer.last_timestamp'
-                    f'was None. Cannot do sync'
-                )
-                return
-        else:
-            timestamp = datetime.fromisoformat(timestamp)
+            return
 
         iterator = self._kv_indexer._get_delta(
             shard_id=self.runtime_args.pea_id,
@@ -177,13 +184,28 @@ class HNSWPostgresIndexer(Executor):
             timestamp=timestamp,
         )
 
-        if rebuild or self._vec_indexer.size == 0:
-            # call with just indexing
-            self._vec_indexer = HnswlibSearcher(**self._init_kwargs)
-            self._vec_indexer.index_sync(iterator, batch_size)
+        # we prevent race conditions with search
+        with self.lock:
+            if rebuild or self._vec_indexer.size == 0:
+                # call with just indexing
+                self._vec_indexer = HnswlibSearcher(**self._init_kwargs)
+                self._vec_indexer.index_sync(iterator, batch_size)
+                self.logger.info(
+                    f'Rebuilt HNSW index with {self._vec_indexer.size} docs'
+                )
 
-        else:
-            self._vec_indexer.sync(iterator)
+            else:
+                prev_size = self._vec_indexer.size
+                self._vec_indexer.sync(iterator)
+                if prev_size != self._vec_indexer.size:
+                    self.logger.info(
+                        f'Synced HNSW index from {prev_size} docs to '
+                        f'{self._vec_indexer.size}'
+                    )
+                else:
+                    self.logger.info(
+                        f'Performed empty sync. HNSW index size is still {prev_size}'
+                    )
 
     def _init_executors(
         self, _init_kwargs
@@ -307,7 +329,10 @@ class HNSWPostgresIndexer(Executor):
             accurate but slower
         """
         if self._kv_indexer and self._vec_indexer:
-            self._vec_indexer.search(docs, parameters)
+            # we prevent race conditions with sync
+            with self.lock:
+                self._vec_indexer.search(docs, parameters)
+
             kv_parameters = copy.deepcopy(parameters)
             kv_parameters['traversal_paths'] = ','.join(
                 [
@@ -330,3 +355,51 @@ class HNSWPostgresIndexer(Executor):
             self._kv_indexer.cleanup()
         else:
             self.logger.warning(f'PSQL has not been initialized')
+
+    def _start_auto_sync(self):
+        self.sync_thread = Thread(target=self._sync_loop, daemon=False)
+        self.sync_thread.start()
+
+    def close(self) -> None:
+        if hasattr(self, 'sync_thread'):
+            # wait for sync thread to finish
+            self.stop_sync_thread = True
+            try:
+                self.sync_thread.join()
+            except Exception as e:
+                self.logger.warning(f'Error when stopping sync thread: {e}')
+
+    def _sync_loop(self):
+        try:
+            self.logger.warning(f'started sync thread')
+            while True:
+                self._sync(rebuild=False, timestamp=None, batch_size=100)
+                self.logger.info(f'sync thread: Completed sync')
+                time.sleep(self.sync_interval)
+                if self.stop_sync_thread:
+                    self.logger.info(f'Exiting sync thread')
+                    return
+        except Exception as e:
+            self.logger.error(f'Sync thread failed: {e}')
+            self.logger.error(traceback.format_exc())
+
+    def _compute_timestamp_for_sync(
+        self, timestamp: Union[datetime, str], rebuild: bool
+    ) -> Optional[datetime]:
+        if timestamp is None:
+            if rebuild:
+                # we assume all db timestamps are UTC +00
+                timestamp = datetime.fromtimestamp(0, timezone.utc)
+            elif self._vec_indexer.last_timestamp:
+                timestamp = self._vec_indexer.last_timestamp
+            else:
+                self.logger.error(
+                    f'No timestamp provided in parameters: '
+                    f'and vec_indexer.last_timestamp'
+                    f'was None. Cannot do sync'
+                )
+                return None
+        else:
+            timestamp = datetime.fromisoformat(timestamp)
+
+        return timestamp

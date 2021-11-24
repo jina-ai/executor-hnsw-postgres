@@ -2,7 +2,7 @@ __copyright__ = "Copyright (c) 2021 Jina AI Limited. All rights reserved."
 __license__ = "Apache-2.0"
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Iterable, Optional, Generator, Tuple, List
 
 import hnswlib
@@ -38,7 +38,7 @@ class HnswlibSearcher:
         dump_path: Optional[str] = None,
         traversal_paths: str = 'r',
         is_distance: bool = True,
-        last_timestamp: datetime = datetime.min,
+        last_timestamp: datetime = datetime.fromtimestamp(0, timezone.utc),
         num_threads: int = -1,
         *args,
         **kwargs,
@@ -131,11 +131,6 @@ class HnswlibSearcher:
         self._index.set_ef(ef_query)
 
         if limit > len(self._ids_to_inds):
-            self.logger.warning(
-                f'The `limit` parameter is set to a value ({limit}) that is higher '
-                f'than'
-                f' the number of documents in the index ({len(self._ids_to_inds)})'
-            )
             limit = len(self._ids_to_inds)
 
         embeddings_search = docs_search.embeddings
@@ -351,9 +346,12 @@ class HnswlibSearcher:
                 da = DocumentArray(Document(id=doc_id, embedding=vec))
                 self.update(da)
 
-        self.last_timestamp = datetime.now()
+            if doc_timestamp > self.last_timestamp:
+                self.last_timestamp = doc_timestamp
 
     def index_sync(self, iterator: GENERATOR_DELTA, batch_size=100) -> None:
+        # there might be new operations on PSQL in the meantime
+        timestamp = datetime.now(timezone.utc)
         if iterator is None:
             self.logger.warning('No data received in HNSW.sync. Skipping...')
             return
@@ -385,4 +383,4 @@ class HnswlibSearcher:
                     self._add(this_batch_embeds[:this_batch_size], this_batch_ids)
                 break
 
-        self.last_timestamp = datetime.now()
+        self.last_timestamp = timestamp
