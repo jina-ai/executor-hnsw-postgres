@@ -6,6 +6,7 @@ import inspect
 import threading
 import time
 import traceback
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from threading import Thread
 from typing import Optional, Tuple, Dict, Iterable, Union
@@ -116,8 +117,7 @@ class HNSWPostgresIndexer(Executor):
         self._init_kwargs = _get_method_args()
         self._init_kwargs.update(kwargs)
         self.sync_interval = sync_interval
-        self.lock = threading.Lock()  # no damage if not using threading but easier
-        # with ctx mger
+        self.lock = nullcontext()
 
         if total_shards is None:
             self.total_shards = getattr(self.runtime_args, 'parallel', None)
@@ -144,6 +144,7 @@ class HNSWPostgresIndexer(Executor):
             self._sync()
 
         if self.sync_interval:
+            self.lock = threading.Lock()
             self.stop_sync_thread = False
             self._start_auto_sync()
 
