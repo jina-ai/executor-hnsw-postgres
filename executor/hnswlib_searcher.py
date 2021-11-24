@@ -131,11 +131,6 @@ class HnswlibSearcher:
         self._index.set_ef(ef_query)
 
         if limit > len(self._ids_to_inds):
-            self.logger.warning(
-                f'The `limit` parameter is set to a value ({limit}) that is higher '
-                f'than'
-                f' the number of documents in the index ({len(self._ids_to_inds)})'
-            )
             limit = len(self._ids_to_inds)
 
         embeddings_search = docs_search.embeddings
