@@ -15,7 +15,7 @@ It thus provides all the CRUD operations expected of a database system, while al
 By default, all data is stored in a PSQL database (as defined in the arguments). 
 In order to add data to / build a HNSW index with your data, you need to manually call the `/sync` endpoint.
 This iterates through the data you have stored, and adds it to the HNSW index.
-By default, this is done incrementally. 
+By default, this is done incrementally, on top of whatever data the HNSW index already has.
 If you want to completely rebuild the index, use the parameter `rebuild`, like so:
 
 ```python
@@ -32,6 +32,26 @@ Flow().add(
 )
 ```
 
+### Automatic background syncing
+
+**⚠ WARNING: Experimental feature**
+
+Optionally, you can enable the option for automatic background syncing of the data into HNSW.
+This creates a thread in the background of the main operations, that will regularly perform the synchronization.
+This can be done with the `sync_interval` constructor argument, like so:
+
+```python
+Flow().add(
+    uses='jinahub://HNSWPostgresIndexer',
+    uses_with={'sync_interval': 5}
+)
+```
+
+This is an integer that represents the amount of seconds to wait between synchronization attempts.
+This should be adjusted based on your specific data amounts.
+For the duration of the background sync, the HNSW index will be locked to avoid invalid state, so searching will be queued.
+When `sync_interval` is enabled, the index will also be locked during search mode, so that syncing will be queued.
+
 ## CRUD operations
 
 You can perform all the usual operations on the respective endpoints
@@ -45,3 +65,25 @@ You can perform all the usual operations on the respective endpoints
 This is done in order to not break the look-up of the document id after doing a search. 
 For a hard delete, add `'soft_delete': False'` to `parameters`. 
 You might also perform a cleanup after a full rebuild of the HNSW index, by calling `/cleanup`.
+
+## Status endpoint
+
+You can also get the information about the status of your data via the `/status` endpoint.
+This returns a `Document` whose tags contain the relevant information.
+The information can be returned via the following keys:
+
+- `'psql_docs'`: number of Documents stored in the PSQL database (includes entries that have been "soft-deleted")
+- `'hnsw_docs'`: the number of Documents indexed in the HNSW index
+- `'last_sync'`: the time of the last synchronization of PSQL into HNSW
+- `'pea_id'`: the shard number
+
+In a sharded environment (`parallel>1`) you will get one Document from each shard. 
+Each shard will have its own `'hnsw_docs'`, `'last_sync'`, `'pea_id'`, but they will all report the same `'psql_docs'`
+(The PSQL database is available to all your shards).
+You need to sum the `'hnsw_docs'` across these Documents, like so
+
+```python
+result = f.post('/status', None, return_results=True)
+result_docs = result[0].docs
+total_hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
+```
