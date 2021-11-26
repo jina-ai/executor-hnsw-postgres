@@ -47,7 +47,7 @@ Flow().add(
 )
 ```
 
-This is an integer that represents the amount of seconds to wait between synchronization attempts.
+`sync_interval` argument accepts an integer that represents the amount of seconds to wait between synchronization attempts.
 This should be adjusted based on your specific data amounts.
 For the duration of the background sync, the HNSW index will be locked to avoid invalid state, so searching will be queued.
 When `sync_interval` is enabled, the index will also be locked during search mode, so that syncing will be queued.
