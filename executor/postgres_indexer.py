@@ -234,9 +234,7 @@ class PostgreSQLStorage:
     @staticmethod
     def _vshards_to_get(shard_id, total_shards, virtual_shards):
         if shard_id > total_shards - 1:
-            raise ValueError(
-                'shard_id should be 0-indexed out ' 'of range(total_shards)'
-            )
+            raise ValueError('shard_id should be 0-indexed out of range(total_shards)')
         vshards = list(range(virtual_shards))
         vshard_part = (
             virtual_shards // total_shards

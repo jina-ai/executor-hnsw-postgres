@@ -119,19 +119,7 @@ class HNSWPostgresIndexer(Executor):
         self.sync_interval = sync_interval
         self.lock = nullcontext()
 
-        if total_shards is None:
-            self.total_shards = getattr(self.runtime_args, 'parallel', None)
-        else:
-            self.total_shards = total_shards
-
-        if self.total_shards is None:
-            self.logger.warning(
-                'total_shards is None, rolling update '
-                'via PSQL import will not be possible.'
-            )
-        else:
-            # shards is passed as str from Flow.add in yaml
-            self.total_shards = int(self.total_shards)
+        self._prepare_shards(total_shards)
 
         self._kv_indexer: Optional[PostgreSQLStorage] = None
         self._vec_indexer: Optional[HnswlibSearcher] = None
@@ -147,6 +135,34 @@ class HNSWPostgresIndexer(Executor):
             self.lock = threading.Lock()
             self.stop_sync_thread = False
             self._start_auto_sync()
+
+    def _prepare_shards(self, total_shards):
+        warning_issued = False
+        if total_shards is None:
+            self.total_shards = getattr(self.runtime_args, 'parallel', None)
+        else:
+            self.total_shards = total_shards
+        if self.total_shards is None:
+            self.logger.warning(
+                'total_shards was None. '
+                'Setting it to 1 to allow non-sharded syncing. '
+                'This can happen when running Executor outside a Flow or on k8s'
+            )
+            self.total_shards = 1
+            warning_issued = True
+
+        if not hasattr(self.runtime_args, 'pea_id'):
+            self.runtime_args.pea_id = 0
+            if not warning_issued:
+                self.logger.warning(
+                    'pea_id was None. '
+                    'setting it to 1 to allow non-sharded syncing. '
+                    'This can happen when running the Executor outside a Flow'
+                )
+
+        else:
+            # shards is passed as str from Flow.add in yaml
+            self.total_shards = int(self.total_shards)
 
     @requests(on='/sync')
     def sync(self, parameters: Dict, **kwargs):
