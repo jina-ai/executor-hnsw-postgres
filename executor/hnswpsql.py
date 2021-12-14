@@ -51,7 +51,7 @@ class HNSWPostgresIndexer(Executor):
         max_connection: int = 64,
         is_distance: bool = True,
         num_threads: int = -1,
-        traversal_paths: Iterable[str] = 'r',
+        traversal_paths: str = 'r',
         hostname: str = '127.0.0.1',
         port: int = 5432,
         username: str = 'postgres',
