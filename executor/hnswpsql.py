@@ -260,10 +260,10 @@ class HNSWPostgresIndexer(Executor):
 
     @requests(on='/delete')
     def delete(self, docs: Optional[DocumentArray], parameters: Dict, **kwargs):
-        """Update existing documents
+        """Delete existing documents, by id
 
-        :param docs: the Documents to update
-        :param parameters: dictionary with options for updating
+        :param docs: the Documents to delete
+        :param parameters: dictionary with options for deleting
 
         Keys accepted:
 
@@ -279,7 +279,7 @@ class HNSWPostgresIndexer(Executor):
     @requests(on='/clear')
     def clear(self, **kwargs):
         """
-        Delete data from PSQL and HNSW
+        Delete all data from PSQL and HNSW
 
         """
         if self._kv_indexer.initialized:
