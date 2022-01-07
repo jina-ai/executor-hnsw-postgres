@@ -151,11 +151,11 @@ class HNSWPostgresIndexer(Executor):
             self.total_shards = 1
             warning_issued = True
 
-        if not hasattr(self.runtime_args, 'pea_id'):
-            self.runtime_args.pea_id = 0
+        if not hasattr(self.runtime_args, 'shard_id'):
+            self.runtime_args.shard_id = 0
             if not warning_issued:
                 self.logger.warning(
-                    'pea_id was None. '
+                    'shard_id was None. '
                     'setting it to 1 to allow non-sharded syncing. '
                     'This can happen when running the Executor outside a Flow'
                 )
@@ -195,7 +195,7 @@ class HNSWPostgresIndexer(Executor):
             return
 
         iterator = self._kv_indexer._get_delta(
-            shard_id=self.runtime_args.pea_id,
+            shard_id=self.runtime_args.shard_id,
             total_shards=self.total_shards,
             timestamp=timestamp,
         )
@@ -295,7 +295,7 @@ class HNSWPostgresIndexer(Executor):
         Get information on status of this Indexer inside a Document's tags
 
         :return: DocumentArray with one Document with tags 'psql_docs', 'hnsw_docs',
-        'last_sync', 'pea_id'
+        'last_sync', 'shard_id'
         """
         psql_docs = None
         hnsw_docs = None
@@ -317,7 +317,7 @@ class HNSWPostgresIndexer(Executor):
             'psql_docs': psql_docs,
             'hnsw_docs': hnsw_docs,
             'last_sync': last_sync,
-            'pea_id': self.runtime_args.pea_id,
+            'shard_id': self.runtime_args.shard_id,
         }
         return DocumentArray([Document(tags=status)])
 
