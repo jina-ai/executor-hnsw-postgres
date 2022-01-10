@@ -13,32 +13,6 @@ compose_yml = os.path.abspath(os.path.join(cur_dir, '..', 'docker-compose.yml'))
 
 METRIC = 'cosine'
 
-
-class MatchMerger(Executor):
-    @requests(on='/search')
-    def merge(self, docs_matrix, parameters: Dict, **kwargs):
-        if docs_matrix:
-            results = OrderedDict()
-            for docs in docs_matrix:
-                for doc in docs:
-                    if doc.id in results:
-                        results[doc.id].matches.extend(doc.matches)
-                    else:
-                        results[doc.id] = doc
-
-            top_k = parameters.get('top_k')
-            if top_k:
-                top_k = int(top_k)
-
-            for doc in results.values():
-                doc.matches = sorted(doc.matches, key=lambda m: m.scores[METRIC].value)[
-                    :top_k
-                ]
-
-            docs = DocumentArray(list(results.values()))
-            return docs
-
-
 @pytest.mark.parametrize('docker_compose', [compose_yml], indirect=['docker_compose'])
 def test_basic_integration(docker_compose, get_documents):
     emb_size = 10
@@ -51,12 +25,11 @@ def test_basic_integration(docker_compose, get_documents):
         uses_with={
             'dim': emb_size,
         },
-        parallel=1,
+        shards=1,
         # this will lead to warnings on PSQL for clashing ids
         # but required in order for the query request is sent
         # to all the shards
         polling='all',
-        uses_after=MatchMerger,
     )
 
     with f:
@@ -119,13 +92,12 @@ def test_replicas_integration(
         name='indexer',
         uses=HNSWPostgresIndexer,
         uses_with=uses_with,
-        parallel=NR_SHARDS,
+        shards=NR_SHARDS,
         replicas=NR_REPLICAS,
         # this will lead to warnings on PSQL for clashing ids
         # but required in order for the query request is sent
         # to all the shards
         polling='all',
-        uses_after=MatchMerger,
         timeout_ready=-1,
     )
 

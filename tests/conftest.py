@@ -35,4 +35,4 @@ def get_documents():
 
 @pytest.fixture()
 def runtime_args():
-    return {'pea_id': 0, 'replica_id': 0, 'parallel': 1}
+    return {'shard_id': 0, 'replica_id': 0, 'shards': 1}
