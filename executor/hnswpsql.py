@@ -9,7 +9,7 @@ import traceback
 from contextlib import nullcontext
 from datetime import datetime, timezone
 from threading import Thread
-from typing import Optional, Tuple, Dict, Iterable, Union
+from typing import Optional, Tuple, Dict, Union
 
 import numpy as np
 from jina import Executor, requests, DocumentArray, Document

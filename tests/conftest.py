@@ -23,11 +23,10 @@ def docker_compose(request):
 @pytest.fixture()
 def get_documents():
     def get_documents_inner(nr=10, index_start=0, emb_size=7):
-        random_batch = np.random.random([nr, emb_size]).astype(np.float32)
-        for i in range(index_start, nr + index_start):
+        for i in range(index_start, index_start + nr):
             d = Document()
             d.id = f'aa{i}'  # to test it supports non-int ids
-            d.embedding = random_batch[i - index_start]
+            d.embedding = np.random.random(emb_size).astype(np.float32)
             yield d
 
     return get_documents_inner
@@ -35,4 +34,4 @@ def get_documents():
 
 @pytest.fixture()
 def runtime_args():
-    return {'pea_id': 0, 'replica_id': 0, 'parallel': 1}
+    return {'shard_id': 0, 'replica_id': 0, 'shards': 1}
