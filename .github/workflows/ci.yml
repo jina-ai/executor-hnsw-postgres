@@ -11,4 +11,4 @@ jobs:
       - name: Black check formatting
         run: black --check -S .
   call-external:
-    uses: jina-ai/workflows-executors/.github/workflows/ci.yml@dev-jina3bis
+    uses: jina-ai/workflows-executors/.github/workflows/ci.yml@master
