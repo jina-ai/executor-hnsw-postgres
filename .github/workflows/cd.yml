@@ -13,7 +13,7 @@ on:
 
 jobs:
   call-external:
-    uses: jina-ai/workflows-executors/.github/workflows/cd.yml@master
+    uses: jina-ai/workflows-executors/.github/workflows/cd.yml@dev-jina3bis
     with:
       event_name: ${{ github.event_name }}
     secrets:
