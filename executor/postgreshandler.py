@@ -16,8 +16,8 @@ from psycopg2 import pool  # noqa: F401
 
 def doc_without_embedding(d: Document):
     new_doc = Document(d, copy=True)
-    new_doc.ClearField('embedding')
-    return new_doc.SerializeToString()
+    new_doc.embedding = None
+    return new_doc.to_bytes()
 
 
 SCHEMA_VERSION = 2
@@ -331,11 +331,12 @@ class PostgreSQLHandler:
                 )
                 result = cursor.fetchone()
                 data = bytes(result[0])
-                retrieved_doc = Document(data)
+                retrieved_doc = Document.from_bytes(data)
                 if return_embeddings and result[1] is not None:
                     embedding = np.frombuffer(result[1], dtype=self.dump_dtype)
                     retrieved_doc.embedding = embedding
-                doc.MergeFrom(retrieved_doc)
+
+                doc._data = retrieved_doc._data
 
     def _close_connection(self, connection):
         # restore it to the pool

@@ -51,7 +51,7 @@ class HNSWPostgresIndexer(Executor):
         max_connection: int = 64,
         is_distance: bool = True,
         num_threads: int = -1,
-        traversal_paths: str = 'r',
+        traversal_paths: str = '@r',
         hostname: str = '127.0.0.1',
         port: int = 5432,
         username: str = 'postgres',
@@ -86,7 +86,7 @@ class HNSWPostgresIndexer(Executor):
         :param last_timestamp: (HNSW) the last time we synced into this HNSW index
         :param num_threads: (HNSW) nr of threads to use during indexing. -1 is default
         :param traversal_paths: (PSQL) default traversal paths on docs
-        (used for indexing, delete and update), e.g. 'r', 'c', 'r,c'
+        (used for indexing, delete and update), e.g. '@r', '@c', '@r,c'
         :param hostname: (PSQL) hostname of the machine
         :param port: (PSQL) the port
         :param username: (PSQL) the username to authenticate
@@ -350,10 +350,10 @@ class HNSWPostgresIndexer(Executor):
                 self._vec_indexer.search(docs, parameters)
 
             kv_parameters = copy.deepcopy(parameters)
-            kv_parameters['traversal_paths'] = ','.join(
+            kv_parameters['traversal_paths'] =','.join(
                 [
                     path + 'm'
-                    for path in kv_parameters.get('traversal_paths', 'r').split(',')
+                    for path in kv_parameters.get('traversal_paths', '@r').split(',')
                 ]
             )
             self._kv_indexer.search(docs, kv_parameters)
