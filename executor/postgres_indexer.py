@@ -13,8 +13,8 @@ except ImportError:
 import numpy as np
 from jina import Document, DocumentArray
 from jina.logging.logger import JinaLogger
-from executor.commons import export_dump_streaming
 
+from .commons import export_dump_streaming # this is for local testing
 from .postgreshandler import PostgreSQLHandler
 
 
