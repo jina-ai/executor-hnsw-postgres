@@ -15,8 +15,7 @@ METRIC = 'cosine'
 @pytest.mark.parametrize('docker_compose', [compose_yml], indirect=['docker_compose'])
 def test_sync(docker_compose, get_documents):
     def verify_status(f, expected_size_min):
-        result = f.post('/status', None, return_results=True)
-        result_docs = result[0].docs
+        result_docs = f.post('/status', None, return_results=True)
         nr_hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
         psql_docs = int(result_docs[0].tags['psql_docs'])
         assert psql_docs >= expected_size_min
@@ -51,8 +50,7 @@ def test_sync(docker_compose, get_documents):
 
             got_updated_docs = False
             for _ in range(50):
-                result = f.post('/search', search_docs, return_results=True)
-                search_docs = result[0].docs
+                search_docs = f.post('/search', search_docs, return_results=True)
                 assert len(search_docs[0].matches) >= nr_indexed_docs
                 nr_indexed_docs, last_sync_timestamp = verify_status(f, nr_indexed_docs)
                 if nr_indexed_docs == (i + 1) * nr_docs_batch:
