@@ -231,7 +231,7 @@ class HNSWPostgresIndexer(Executor):
         return kv_indexer, vec_indexer
 
     @requests(on='/index')
-    def index(self, docs: Optional[DocumentArray], parameters: Dict, **kwargs):
+    def index(self, docs: DocumentArray, parameters: Dict, **kwargs):
         """Index new documents
 
         NOTE: PSQL has a uniqueness constraint on ID
@@ -246,7 +246,7 @@ class HNSWPostgresIndexer(Executor):
         self._kv_indexer.add(docs, parameters, **kwargs)
 
     @requests(on='/update')
-    def update(self, docs: Optional[DocumentArray], parameters: Dict, **kwargs):
+    def update(self, docs: DocumentArray, parameters: Dict, **kwargs):
         """Update existing documents
 
         :param docs: the Documents to update
@@ -259,7 +259,7 @@ class HNSWPostgresIndexer(Executor):
         self._kv_indexer.update(docs, parameters, **kwargs)
 
     @requests(on='/delete')
-    def delete(self, docs: Optional[DocumentArray], parameters: Dict, **kwargs):
+    def delete(self, docs: DocumentArray, parameters: Dict, **kwargs):
         """Delete existing documents, by id
 
         :param docs: the Documents to delete
