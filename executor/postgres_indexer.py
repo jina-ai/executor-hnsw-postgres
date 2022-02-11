@@ -13,15 +13,15 @@ except ImportError:
 import numpy as np
 from jina import Document, DocumentArray
 from jina.logging.logger import JinaLogger
-from jina_commons.indexers.dump import export_dump_streaming
 
+from .commons import export_dump_streaming # this is for local testing
 from .postgreshandler import PostgreSQLHandler
 
 
 def doc_without_embedding(d: Document):
     new_doc = Document(d, copy=True)
-    new_doc.ClearField('embedding')
-    return new_doc.SerializeToString()
+    new_doc.embedding = None
+    return new_doc.to_bytes()
 
 
 class PostgreSQLStorage:
@@ -36,7 +36,7 @@ class PostgreSQLStorage:
         database: str = 'postgres',
         table: str = 'default_table',
         max_connections=5,
-        traversal_paths: str = 'r',
+        traversal_paths: str = '@r',
         return_embeddings: bool = True,
         dry_run: bool = False,
         partitions: int = 128,
@@ -118,7 +118,7 @@ class PostgreSQLStorage:
         traversal_paths = parameters.get(
             'traversal_paths', self.default_traversal_paths
         )
-        self.handler.add(docs.traverse_flat(traversal_paths))
+        self.handler.add(docs[traversal_paths])
 
     def update(self, docs: DocumentArray, parameters: Dict, **kwargs):
         """Updated document from the database.
@@ -131,7 +131,7 @@ class PostgreSQLStorage:
         traversal_paths = parameters.get(
             'traversal_paths', self.default_traversal_paths
         )
-        self.handler.update(docs.traverse_flat(traversal_paths))
+        self.handler.update(docs[traversal_paths])
 
     def cleanup(self, **kwargs):
         """
@@ -157,7 +157,7 @@ class PostgreSQLStorage:
             'traversal_paths', self.default_traversal_paths
         )
         soft_delete = parameters.get('soft_delete', False)
-        self.handler.delete(docs.traverse_flat(traversal_paths), soft_delete)
+        self.handler.delete(docs[traversal_paths], soft_delete)
 
     def dump(self, parameters: Dict, **kwargs):
         """Dump the index
@@ -179,6 +179,7 @@ class PostgreSQLStorage:
             shards=shards,
             size=self.size,
             data=self.handler.get_generator(include_metas=include_metas),
+            logger=self.logger
         )
 
     def close(self) -> None:
@@ -202,7 +203,7 @@ class PostgreSQLStorage:
         )
 
         self.handler.search(
-            docs.traverse_flat(traversal_paths),
+            docs[traversal_paths],
             return_embeddings=parameters.get(
                 'return_embeddings', self.default_return_embeddings
             ),

@@ -36,7 +36,7 @@ class HnswlibSearcher:
         ef_query: int = 50,
         max_connection: int = 16,
         dump_path: Optional[str] = None,
-        traversal_paths: str = 'r',
+        traversal_paths: str = '@r',
         is_distance: bool = True,
         last_timestamp: datetime = datetime.fromtimestamp(0, timezone.utc),
         num_threads: int = -1,
@@ -57,7 +57,7 @@ class HnswlibSearcher:
         :param dump_path: The path to the directory from where to load, and where to
             save the index state
         :param traversal_paths: The default traversal path on docs (used for
-        indexing, search and update), e.g. 'r', 'c', 'r,c'
+        indexing, search and update), e.g. '@r', '@c', '@r,c'
         :param is_distance: Boolean flag that describes if distance metric need to
         be reinterpreted as similarities.
         :param last_timestamp: the last time we synced into this HNSW index
@@ -121,7 +121,7 @@ class HnswlibSearcher:
             return
 
         traversal_paths = parameters.get('traversal_paths', self.traversal_paths)
-        docs_search = docs.traverse_flat(traversal_paths)
+        docs_search = docs[traversal_paths]
         if len(docs_search) == 0:
             return
 
@@ -172,7 +172,7 @@ class HnswlibSearcher:
         if docs is None:
             return
 
-        docs_to_index = docs.traverse_flat(traversal_paths)
+        docs_to_index = docs[traversal_paths]
         if len(docs_to_index) == 0:
             return
 
@@ -183,7 +183,7 @@ class HnswlibSearcher:
                 f' {embeddings.shape[-1]}, but dimension of index is {self.dim}'
             )
 
-        ids = docs_to_index.get_attributes('id')
+        ids = docs_to_index[:,'id']
         index_size = self._index.element_count
         docs_inds = []
         for id in ids:
@@ -218,7 +218,7 @@ class HnswlibSearcher:
         if docs is None:
             return
 
-        docs_to_update = docs.traverse_flat(traversal_paths)
+        docs_to_update = docs[traversal_paths]
         if len(docs_to_update) == 0:
             return
 

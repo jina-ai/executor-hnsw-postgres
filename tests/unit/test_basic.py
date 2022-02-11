@@ -16,7 +16,7 @@ def test_basic(runtime_args):
     assert isinstance(indexer._vec_indexer, HnswlibSearcher)
     assert isinstance(indexer._kv_indexer, PostgreSQLStorage)
     assert indexer._init_kwargs is not None
-    status = dict(indexer.status()[0].tags)
+    status = indexer.status()[0].tags
     assert status['psql_docs'] is None
     assert status['hnsw_docs'] == 0.0  # protobuf converts ints to floats
     assert datetime.datetime.fromisoformat(

@@ -37,8 +37,7 @@ def test_basic_integration(docker_compose, get_documents):
         f.post(
             '/sync',
         )
-        result = f.post('/status', None, return_results=True)
-        result_docs = result[0].docs
+        result_docs = f.post('/status', None, return_results=True)
         first_hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
         assert int(result_docs[0].tags['psql_docs']) == 0
         assert int(first_hnsw_docs) == 0
@@ -52,19 +51,16 @@ def test_basic_integration(docker_compose, get_documents):
             get_documents(index_start=len(docs), emb_size=emb_size)
         )
 
-        result = f.post('/search', search_docs, return_results=True)
-        search_docs = result[0].docs
+        search_docs = f.post('/search', search_docs, return_results=True)
         assert len(search_docs[0].matches) == 0
 
         f.post(
             '/sync',
         )
-        result = f.post('/search', search_docs, return_results=True)
-        search_docs = result[0].docs
+        search_docs = f.post('/search', search_docs, return_results=True)
         assert len(search_docs[0].matches) > 0
 
-        result = f.post('/status', None, return_results=True)
-        result_docs = result[0].docs
+        result_docs = f.post('/status', None, return_results=True)
         new_hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
         assert new_hnsw_docs > first_hnsw_docs
         assert int(new_hnsw_docs) == len(docs)
@@ -102,8 +98,8 @@ def test_replicas_integration(
     )
 
     with f:
-        result_docs = f.post('/status', return_results=True)[0].docs
-        status = dict(result_docs[0].tags)
+        result_docs = f.post('/status', return_results=True)
+        status = result_docs[0].tags
         assert int(status['psql_docs']) == 0
         hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
         assert int(hnsw_docs) == 0
@@ -115,7 +111,7 @@ def test_replicas_integration(
         with TimeContext(f'indexing {nr_docs}'):
             f.post('/index', docs, request_size=request_size)
 
-        status = dict(f.post('/status', return_results=True)[0].docs[0].tags)
+        status = f.post('/status', return_results=True)[0].tags
         assert int(status['psql_docs']) == nr_docs
         assert int(status['hnsw_docs']) == 0
 
@@ -124,22 +120,20 @@ def test_replicas_integration(
         )
 
         if not benchmark:
-            result = f.post('/search', search_docs, return_results=True)
-            search_docs = result[0].docs
+            search_docs = f.post('/search', search_docs, return_results=True)
             assert len(search_docs[0].matches) == 0
 
         with TimeContext(f'rolling update {NR_REPLICAS} replicas x {NR_SHARDS} shards'):
-            f.rolling_update(pod_name='indexer', uses_with=uses_with)
+            f.rolling_update(deployment_name='indexer', uses_with=uses_with)
 
-        result_docs = f.post('/status', return_results=True)[0].docs
-        status = dict(result_docs[0].tags)
+        result_docs = f.post('/status', return_results=True)
+        status = result_docs[0].tags
         assert int(status['psql_docs']) == nr_docs
         hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
         assert int(hnsw_docs) == nr_docs
 
         with TimeContext(f'search with {nr_search_docs}'):
-            result = f.post('/search', search_docs, return_results=True)
-        search_docs = result[0].docs
+            search_docs = f.post('/search', search_docs, return_results=True)
         assert len(search_docs[0].matches) == NR_SHARDS * LIMIT
         # FIXME(core): see https://github.com/jina-ai/executor-hnsw-postgres/pull/7
         if benchmark:
@@ -153,7 +147,6 @@ def in_docker():
             print('in docker, skipping benchmark')
             return True
         return False
-
 
 @pytest.mark.parametrize('docker_compose', [compose_yml], indirect=['docker_compose'])
 def test_benchmark_basic(docker_compose, get_documents):
@@ -188,19 +181,16 @@ def test_integration_cleanup(docker_compose, get_documents):
 
     with f:
         f.post('/index', docs)
-        result = f.post('/status', None, return_results=True)
-        result_docs = result[0].docs
+        result_docs = f.post('/status', None, return_results=True)
         assert int(result_docs[0].tags['psql_docs']) == len(docs)
 
         # default to soft delete
         f.delete(docs)
-        result = f.post('/status', None, return_results=True)
-        result_docs = result[0].docs
+        result_docs = f.post('/status', None, return_results=True)
         assert int(result_docs[0].tags['psql_docs']) == len(docs)
 
         f.post(on='/cleanup')
-        result = f.post('/status', None, return_results=True)
-        result_docs = result[0].docs
+        result_docs = f.post('/status', None, return_results=True)
         assert int(result_docs[0].tags['psql_docs']) == 0
 
 
