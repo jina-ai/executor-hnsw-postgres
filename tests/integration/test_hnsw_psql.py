@@ -124,7 +124,7 @@ def test_replicas_integration(
             assert len(search_docs[0].matches) == 0
 
         with TimeContext(f'rolling update {NR_REPLICAS} replicas x {NR_SHARDS} shards'):
-            f.rolling_update(pod_name='indexer', uses_with=uses_with)
+            f.rolling_update(deployment_name='indexer', uses_with=uses_with)
 
         result_docs = f.post('/status', return_results=True)
         status = result_docs[0].tags
