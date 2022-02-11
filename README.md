@@ -83,7 +83,6 @@ Each shard will have its own `'hnsw_docs'`, `'last_sync'`, `'pea_id'`, but they 
 You need to sum the `'hnsw_docs'` across these Documents, like so
 
 ```python
-result = f.post('/status', None, return_results=True)
-result_docs = result[0].docs
+result_docs = f.post('/status', None, return_results=True)
 total_hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
 ```
