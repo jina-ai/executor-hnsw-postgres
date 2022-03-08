@@ -1,7 +1,7 @@
-psycopg2-binary==2.8.6
+psycopg2-binary>=2.8.6
 pytest-mock
-hnswlib==0.5.2
-bidict==0.21.3
+hnswlib>=0.6.0
+bidict
 pre-commit
-backports.zoneinfo==0.2.1
-tqdm==4.43.0
+backports.zoneinfo
+tqdm

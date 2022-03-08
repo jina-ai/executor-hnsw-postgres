@@ -148,13 +148,13 @@ class HnswlibSearcher:
             for idx, dist in zip(indices_i, dists_i):
                 match = Document(id=self._ids_to_inds.inverse[idx])
                 if self.is_distance:
-                    match.scores[self.metric] = dist
+                    match.scores[self.metric].value = dist
                 elif self.metric in ["inner_product", "cosine"]:
-                    match.scores[self.metric] = 1 - dist
+                    match.scores[self.metric].value = 1 - dist
                 elif self.metric == 'euclidean':
-                    match.scores[self.metric] = 1 / (1 + dist)
+                    match.scores[self.metric].value = 1 / (1 + dist)
                 else:
-                    match.scores[self.metric] = dist
+                    match.scores[self.metric].value = dist
                 docs_search[i].matches.append(match)
 
     def index(
@@ -183,7 +183,7 @@ class HnswlibSearcher:
                 f' {embeddings.shape[-1]}, but dimension of index is {self.dim}'
             )
 
-        ids = docs_to_index[:,'id']
+        ids = docs_to_index[:, 'id']
         index_size = self._index.element_count
         docs_inds = []
         for id in ids:

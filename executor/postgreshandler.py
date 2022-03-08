@@ -3,6 +3,7 @@ __license__ = "Apache-2.0"
 
 import datetime
 import hashlib
+import copy as cp
 from contextlib import contextmanager
 from typing import Generator, List, Optional, Tuple
 
@@ -330,13 +331,19 @@ class PostgreSQLHandler:
                     (doc.id,),
                 )
                 result = cursor.fetchone()
+
+                scores = cp.deepcopy(doc.scores)
+
                 data = bytes(result[0])
                 retrieved_doc = Document.from_bytes(data)
                 if return_embeddings and result[1] is not None:
                     embedding = np.frombuffer(result[1], dtype=self.dump_dtype)
                     retrieved_doc.embedding = embedding
 
+                # update meta data
                 doc._data = retrieved_doc._data
+                # update scores
+                doc.scores = scores
 
     def _close_connection(self, connection):
         # restore it to the pool
