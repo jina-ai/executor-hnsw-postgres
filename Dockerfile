@@ -1,7 +1,7 @@
 # DO NOT DELETE THIS DOCKERFILE
 # required because hnsw requires a specific gcc
 
-FROM jinaai/jina:2-py37-perf
+FROM jinaai/jina:3-py37-perf
 
 COPY . /workspace
 WORKDIR /workspace

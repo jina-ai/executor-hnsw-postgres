@@ -14,7 +14,7 @@ import numpy as np
 from jina import Document, DocumentArray
 from jina.logging.logger import JinaLogger
 
-from .commons import export_dump_streaming # this is for local testing
+from .commons import export_dump_streaming  # this is for local testing
 from .postgreshandler import PostgreSQLHandler
 
 
@@ -179,7 +179,7 @@ class PostgreSQLStorage:
             shards=shards,
             size=self.size,
             data=self.handler.get_generator(include_metas=include_metas),
-            logger=self.logger
+            logger=self.logger,
         )
 
     def close(self) -> None:
