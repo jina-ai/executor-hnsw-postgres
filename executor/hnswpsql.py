@@ -139,7 +139,7 @@ class HNSWPostgresIndexer(Executor):
     def _prepare_shards(self, total_shards):
         warning_issued = False
         if total_shards is None:
-            self.total_shards = getattr(self.runtime_args, 'parallel', None)
+            self.total_shards = getattr(self.runtime_args, 'shards', None)
         else:
             self.total_shards = total_shards
         if self.total_shards is None:
@@ -350,7 +350,7 @@ class HNSWPostgresIndexer(Executor):
                 self._vec_indexer.search(docs, parameters)
 
             kv_parameters = copy.deepcopy(parameters)
-            kv_parameters['traversal_paths'] =','.join(
+            kv_parameters['traversal_paths'] = ','.join(
                 [
                     path + 'm'
                     for path in kv_parameters.get('traversal_paths', '@r').split(',')
