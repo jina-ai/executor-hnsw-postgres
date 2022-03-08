@@ -262,7 +262,6 @@ class PostgreSQLStorage:
         except ValueError:
             pass  # year 0 if timestamp is min
         if self.size > 0:
-            print(f'===> shard_id: {shard_id} ({total_shards})')
             shards_to_get = self._vshards_to_get(
                 shard_id, total_shards, self.partitions
             )
