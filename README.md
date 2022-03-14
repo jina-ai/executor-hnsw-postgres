@@ -1,6 +1,6 @@
 # 🌟 HNSW + PostgreSQL Indexer
 
-HNSWPostgreSQLIndexer Jina is a production-ready, scalable Indexer for the Jina neural search framework.
+HNSWPostgreSQLIndexer is a production-ready, scalable Indexer for the Jina neural search framework.
 
 It combines the reliability of PostgreSQL with the speed and efficiency of the HNSWlib nearest neighbor library.
 
@@ -50,7 +50,7 @@ Flow().add(
 `sync_interval` argument accepts an integer that represents the amount of seconds to wait between synchronization attempts.
 This should be adjusted based on your specific data amounts.
 For the duration of the background sync, the HNSW index will be locked to avoid invalid state, so searching will be queued.
-When `sync_interval` is enabled, the index will also be locked during search mode, so that syncing will be queued.
+The same applies during search operations: the index is locked and indexing will be queued.
 
 ## CRUD operations
 
@@ -62,15 +62,15 @@ You can perform all the usual operations on the respective endpoints
 - `/delete`. Delete documents in PostgreSQL. 
 
 **Note**. This only performs soft-deletion by default. 
-This is done in order to not break the look-up of the document id after doing a search. 
-For a hard delete, add `'soft_delete': False'` to `parameters`. 
+This is done in order to not break the look-up of the Document id after doing a search. 
+For a hard delete, add `'soft_delete': False'` to `parameters` of the delete request. 
 You might also perform a cleanup after a full rebuild of the HNSW index, by calling `/cleanup`.
 
 ## Status endpoint
 
 You can also get the information about the status of your data via the `/status` endpoint.
 This returns a `Document` whose tags contain the relevant information.
-The information can be returned via the following keys:
+The information can be accessed via the following keys in the `Document.tags`:
 
 - `'psql_docs'`: number of Documents stored in the PSQL database (includes entries that have been "soft-deleted")
 - `'hnsw_docs'`: the number of Documents indexed in the HNSW index
