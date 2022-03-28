@@ -290,7 +290,7 @@ class HNSWPostgresIndexer(Executor):
         assert self._vec_indexer.size == 0
 
     @requests(on='/status')
-    def status(self, **kwargs):
+    def status(self, docs: DocumentArray, **kwargs):
         """
         Get information on status of this Indexer inside a Document's tags
 
@@ -319,7 +319,11 @@ class HNSWPostgresIndexer(Executor):
             'last_sync': last_sync,
             'shard_id': self.runtime_args.shard_id,
         }
-        return DocumentArray([Document(tags=status)])
+        if docs and len(docs):
+            for doc in docs:
+                doc.tags.update(status)
+        else:
+            return DocumentArray([Document(tags=status)])
 
     @requests(on='/search')
     def search(self, docs: 'DocumentArray', parameters: Dict = None, **kwargs):
