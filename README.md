@@ -69,20 +69,21 @@ You might also perform a cleanup after a full rebuild of the HNSW index, by call
 ## Status endpoint
 
 You can also get the information about the status of your data via the `/status` endpoint.
-This returns a `Document` whose tags contain the relevant information.
-The information can be accessed via the following keys in the `Document.tags`:
+This returns a `dict` whose tags contain the relevant information.
+The information can be accessed via the following keys in the `parameters.__results__` of a full flow response:
 
 - `'psql_docs'`: number of Documents stored in the PSQL database (includes entries that have been "soft-deleted")
 - `'hnsw_docs'`: the number of Documents indexed in the HNSW index
 - `'last_sync'`: the time of the last synchronization of PSQL into HNSW
 - `'pea_id'`: the shard number
 
-In a sharded environment (`parallel>1`) you will get one Document from each shard. 
+In a sharded environment (`parallel>1`) you will get one `dict` from each shard. 
 Each shard will have its own `'hnsw_docs'`, `'last_sync'`, `'pea_id'`, but they will all report the same `'psql_docs'`
 (The PSQL database is available to all your shards).
-You need to sum the `'hnsw_docs'` across these Documents, like so
+You need to sum the `'hnsw_docs'` across these dictionaries, like so
 
 ```python
-result_docs = f.post('/status', None, return_results=True)
-total_hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
+results = f.post('/status', None, return_responses=True)
+status_results = results[0].parameters["__results__"]
+total_hnsw_docs = sum(v['hnsw_docs'] for v in status_results.values())
 ```

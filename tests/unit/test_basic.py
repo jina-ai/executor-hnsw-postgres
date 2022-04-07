@@ -6,7 +6,8 @@ from executor.hnswpsql import HNSWPostgresIndexer, HnswlibSearcher, PostgreSQLSt
 from jina import DocumentArray
 
 cur_dir = os.path.dirname(os.path.abspath(__file__))
-compose_yml = os.path.abspath(os.path.join(cur_dir, '..', 'docker-compose.yml'))
+compose_yml = os.path.abspath(os.path.join(
+    cur_dir, '..', 'docker-compose.yml'))
 
 
 def test_basic(runtime_args):
@@ -16,7 +17,7 @@ def test_basic(runtime_args):
     assert isinstance(indexer._vec_indexer, HnswlibSearcher)
     assert isinstance(indexer._kv_indexer, PostgreSQLStorage)
     assert indexer._init_kwargs is not None
-    status = indexer.status()[0].tags
+    status = indexer.status()
     assert status['psql_docs'] is None
     assert status['hnsw_docs'] == 0.0  # protobuf converts ints to floats
     assert datetime.datetime.fromisoformat(
@@ -39,7 +40,8 @@ def test_docker(docker_compose, get_documents, runtime_args):
 
     indexer.index(docs, {})
 
-    search_docs = DocumentArray(get_documents(index_start=len(docs), emb_size=emb_size))
+    search_docs = DocumentArray(get_documents(
+        index_start=len(docs), emb_size=emb_size))
     indexer.search(search_docs, {})
     assert len(search_docs[0].matches) == 0
 
@@ -48,7 +50,6 @@ def test_docker(docker_compose, get_documents, runtime_args):
     assert len(search_docs[0].matches) > 0
 
     indexer.clear()
-    status_response = indexer.status()
-    status = dict(status_response[0].tags)
+    status = indexer.status()
     assert status['psql_docs'] == 0
     assert status['hnsw_docs'] == 0
