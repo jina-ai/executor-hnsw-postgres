@@ -330,6 +330,12 @@ class HnswlibSearcher:
         for doc_id, vec_array, doc_timestamp in delta:
             idx = self._ids_to_inds.get(doc_id)
 
+            if (vec_array is not None) and np.isnan(vec_array).any():
+                self.logger.error(
+                    f'NaN value contained in the embedding of doc {doc_id}'
+                )
+                continue
+
             # TODO: performance improvements possible
             # instead of creating new Ds and DAs individually
             # we can can batch
@@ -364,7 +370,10 @@ class HnswlibSearcher:
         while True:
             try:
                 doc_id, vec_array, _ = next(iterator)
-                if vec_array is None:
+                if vec_array is None or np.isnan(vec_array).any():
+                    self.logger.error(
+                        f'The doc {doc_id} does not contain embedding, or NaN values are found.'
+                    )
                     continue
 
                 vec = vec_array.astype(HNSW_TYPE)
