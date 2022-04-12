@@ -80,7 +80,7 @@ def test_replicas_integration(
 ):
     LIMIT = 10
     NR_SHARDS = 2
-    # FIXME: rolling_update is deprecated in latest jina core, then replicas > 1 does not work now
+    # FIXME: rolling_update is deprecated in latest jina core, then replicas > 1 cannot pass the test.
     NR_REPLICAS = 1
     docs = get_documents(nr=nr_docs, emb_size=emb_size)
 
@@ -133,12 +133,11 @@ def test_replicas_integration(
             '/sync',
         )
 
-        # result_docs = f.post('/status', return_results=True)
-        # status = result_docs[0].tags
-        # print(status)
-        # assert int(status['psql_docs']) == nr_docs
-        # hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
-        # assert int(hnsw_docs) == nr_docs
+        result_docs = f.post('/status', return_results=True)
+        status = result_docs[0].tags
+        assert int(status['psql_docs']) == nr_docs
+        hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
+        assert int(hnsw_docs) == nr_docs
 
         with TimeContext(f'search with {nr_search_docs}'):
             search_docs = f.post('/search', search_docs, return_results=True)
