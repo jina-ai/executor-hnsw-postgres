@@ -489,6 +489,7 @@ class PostgreSQLHandler:
                     if rec[1] is not None
                     else None
                 )
+
                 yield rec[0], second_val, rec[2]
 
     def get_snapshot_size(self):

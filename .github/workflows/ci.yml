@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: install black
-        run: pip install black==21.7b0
+        run: pip install black==22.3.0
       - name: Black check formatting
         run: black --check -S .
   call-external:
