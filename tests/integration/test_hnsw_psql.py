@@ -79,9 +79,8 @@ def test_replicas_integration(
     docker_compose, get_documents, nr_docs, nr_search_docs, emb_size, benchmark=False
 ):
     LIMIT = 10
-    # NR_SHARDS = 2
-    # NR_REPLICAS = 3
     NR_SHARDS = 2
+    # FIXME: rolling_update is deprecated in latest jina core, then replicas > 1 does not work now
     NR_REPLICAS = 1
     docs = get_documents(nr=nr_docs, emb_size=emb_size)
 
