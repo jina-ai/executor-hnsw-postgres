@@ -9,7 +9,8 @@ from jina import DocumentArray, Flow, Executor, requests
 from jina.logging.profile import TimeContext
 
 cur_dir = os.path.dirname(os.path.abspath(__file__))
-compose_yml = os.path.abspath(os.path.join(cur_dir, '..', 'docker-compose.yml'))
+compose_yml = os.path.abspath(os.path.join(
+    cur_dir, '..', 'docker-compose.yml'))
 
 METRIC = 'cosine'
 
@@ -38,12 +39,14 @@ def test_basic_integration(docker_compose, get_documents):
         f.post(
             '/sync',
         )
-        result_docs = f.post('/status', None, return_results=True)
-        first_hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
-        assert int(result_docs[0].tags['psql_docs']) == 0
+        results = f.post('/status', None, return_responses=True)
+        status_results = results[0].parameters["__results__"]
+        first_hnsw_docs = sum(v['hnsw_docs'] for v in status_results.values())
+        for a_status in status_results.values():
+            assert int(a_status['psql_docs']) == 0
         assert int(first_hnsw_docs) == 0
 
-        status = result_docs[0].tags['last_sync']
+        status = list(status_results.values())[0]['last_sync']
         last_sync_timestamp = datetime.datetime.fromisoformat(status)
 
         f.post('/index', docs)
@@ -52,22 +55,24 @@ def test_basic_integration(docker_compose, get_documents):
             get_documents(index_start=len(docs), emb_size=emb_size)
         )
 
-        search_docs = f.post('/search', search_docs, return_results=True)
+        search_docs = f.post('/search', search_docs)
         assert len(search_docs[0].matches) == 0
 
         f.post(
             '/sync',
         )
-        search_docs = f.post('/search', search_docs, return_results=True)
+        search_docs = f.post('/search', search_docs)
         assert len(search_docs[0].matches) > 0
 
-        result_docs = f.post('/status', None, return_results=True)
-        new_hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
+        results2 = f.post('/status', None, return_responses=True)
+        status_results2 = results2[0].parameters["__results__"]
+        new_hnsw_docs = sum(v['hnsw_docs'] for v in status_results2.values())
         assert new_hnsw_docs > first_hnsw_docs
         assert int(new_hnsw_docs) == len(docs)
-        assert int(result_docs[0].tags['psql_docs']) == len(docs)
-        status = result_docs[0].tags['last_sync']
-        last_sync = datetime.datetime.fromisoformat(status)
+        for a_status in status_results2.values():
+            assert int(a_status['psql_docs']) == len(docs)
+        status2 = list(status_results2.values())[0]['last_sync']
+        last_sync = datetime.datetime.fromisoformat(status2)
         assert last_sync > last_sync_timestamp
 
 
@@ -100,10 +105,11 @@ def test_replicas_integration(
     )
 
     with f:
-        result_docs = f.post('/status', return_results=True)
-        status = result_docs[0].tags
-        assert int(status['psql_docs']) == 0
-        hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
+        results = f.post('/status', return_responses=True)
+        status_results = results[0].parameters["__results__"]
+        for a_status in status_results.values():
+            assert int(a_status['psql_docs']) == 0
+        hnsw_docs = sum(v['hnsw_docs'] for v in status_results.values())
         assert int(hnsw_docs) == 0
 
         request_size = 100
@@ -113,16 +119,19 @@ def test_replicas_integration(
         with TimeContext(f'indexing {nr_docs}'):
             f.post('/index', docs, request_size=request_size)
 
-        status = f.post('/status', return_results=True)[0].tags
-        assert int(status['psql_docs']) == nr_docs
-        assert int(status['hnsw_docs']) == 0
+        status = f.post(
+            '/status', return_responses=True)[0].parameters["__results__"]
+        for a_status in status.values():
+            assert int(a_status['psql_docs']) == nr_docs
+            assert int(a_status['hnsw_docs']) == 0
 
         search_docs = DocumentArray(
-            get_documents(index_start=nr_docs, nr=nr_search_docs, emb_size=emb_size)
+            get_documents(index_start=nr_docs,
+                          nr=nr_search_docs, emb_size=emb_size)
         )
 
         if not benchmark:
-            search_docs = f.post('/search', search_docs, return_results=True)
+            search_docs = f.post('/search', search_docs)
             assert len(search_docs[0].matches) == 0
 
         # NOTE: "rolling_update" is remove, refer to https://github.com/jina-ai/jina/pull/4517
@@ -133,14 +142,15 @@ def test_replicas_integration(
             '/sync',
         )
 
-        result_docs = f.post('/status', return_results=True)
-        status = result_docs[0].tags
-        assert int(status['psql_docs']) == nr_docs
-        hnsw_docs = sum(d.tags['hnsw_docs'] for d in result_docs)
-        assert int(hnsw_docs) == nr_docs
+        results2 = f.post('/status', return_responses=True)
+        status_results2 = results2[0].parameters["__results__"]
+        for a_status in status_results2.values():
+            assert int(a_status['psql_docs']) == nr_docs
+        hnsw_docs2 = sum(v['hnsw_docs'] for v in status_results2.values())
+        assert int(hnsw_docs2) == nr_docs
 
         with TimeContext(f'search with {nr_search_docs}'):
-            search_docs = f.post('/search', search_docs, return_results=True)
+            search_docs = f.post('/search', search_docs)
         assert len(search_docs[0].matches) == NR_SHARDS * LIMIT
         # FIXME(core): see https://github.com/jina-ai/executor-hnsw-postgres/pull/7
         if benchmark:
@@ -149,10 +159,13 @@ def test_replicas_integration(
 
 def in_docker():
     """Returns: True if running in a Docker container, else False"""
-    with open('/proc/1/cgroup', 'rt') as ifh:
-        if 'docker' in ifh.read():
-            print('in docker, skipping benchmark')
-            return True
+    try:
+        with open('/proc/1/cgroup', 'rt') as ifh:
+            if 'docker' in ifh.read():
+                print('in docker, skipping benchmark')
+                return True
+            return False
+    except:
         return False
 
 
@@ -189,17 +202,23 @@ def test_integration_cleanup(docker_compose, get_documents):
 
     with f:
         f.post('/index', docs)
-        result_docs = f.post('/status', None, return_results=True)
-        assert int(result_docs[0].tags['psql_docs']) == len(docs)
+        results = f.post('/status', None, return_responses=True)
+        status_results = results[0].parameters["__results__"]
+        for a_status in status_results.values():
+            assert int(a_status['psql_docs']) == len(docs)
 
         # default to soft delete
         f.delete(docs)
-        result_docs = f.post('/status', None, return_results=True)
-        assert int(result_docs[0].tags['psql_docs']) == len(docs)
+        results2 = f.post('/status', None, return_responses=True)
+        status_results2 = results2[0].parameters["__results__"]
+        for a_status in status_results2.values():
+            assert int(a_status['psql_docs']) == len(docs)
 
         f.post(on='/cleanup')
-        result_docs = f.post('/status', None, return_results=True)
-        assert int(result_docs[0].tags['psql_docs']) == 0
+        results3 = f.post('/status', None, return_responses=True)
+        status_results3 = results3[0].parameters["__results__"]
+        for a_status in status_results3.values():
+            assert int(a_status['psql_docs']) == 0
 
 
 # TODO test with update. same ids, diff embeddings, assert embeddings in match has

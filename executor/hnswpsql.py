@@ -109,7 +109,8 @@ class HNSWPostgresIndexer(Executor):
         here for easier reference
         """
         super().__init__(**kwargs)
-        self.logger = JinaLogger(getattr(self.metas, 'name', self.__class__.__name__))
+        self.logger = JinaLogger(
+            getattr(self.metas, 'name', self.__class__.__name__))
 
         # TODO is there a way to improve this?
         # done because we want to have the args exposed in hub website
@@ -292,9 +293,20 @@ class HNSWPostgresIndexer(Executor):
     @requests(on='/status')
     def status(self, **kwargs):
         """
-        Get information on status of this Indexer inside a Document's tags
+        Get information on status of this Indexer inside a dictionary.
+        In the flow return it will be exposed under the `parameters.__results__` with
+        a key for each executor.
 
-        :return: DocumentArray with one Document with tags 'psql_docs', 'hnsw_docs',
+        e.g. {'__results__': {'executor0/shard-0/rep-0': {'hnsw_docs': 0.0,
+                                             'last_sync': '1970-01-01T00:00:00+00:00',
+                                             'psql_docs': 0.0,
+                                             'shard_id': 0.0},
+                 'executor0/shard-1/rep-0': {'hnsw_docs': 0.0,
+                                             'last_sync': '1970-01-01T00:00:00+00:00',
+                                             'psql_docs': 0.0,
+                                             'shard_id': 1.0}}}
+
+        :return: Dictionary with keys 'psql_docs', 'hnsw_docs',
         'last_sync', 'shard_id'
         """
         psql_docs = None
@@ -319,7 +331,7 @@ class HNSWPostgresIndexer(Executor):
             'last_sync': last_sync,
             'shard_id': self.runtime_args.shard_id,
         }
-        return DocumentArray([Document(tags=status)])
+        return status
 
     @requests(on='/search')
     def search(self, docs: 'DocumentArray', parameters: Dict = None, **kwargs):
@@ -358,7 +370,8 @@ class HNSWPostgresIndexer(Executor):
             )
             self._kv_indexer.search(docs, kv_parameters)
         else:
-            self.logger.warning('Indexers have not been initialized. Empty results')
+            self.logger.warning(
+                'Indexers have not been initialized. Empty results')
             return
 
     @requests(on='/cleanup')
