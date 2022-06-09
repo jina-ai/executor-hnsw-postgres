@@ -17,4 +17,4 @@ jobs:
     with:
       event_name: ${{ github.event_name }}
     secrets:
-      secret: ${{ secrets.EXECUTOR_SECRET }}
+      jinahub_token: ${{ secrets.JINAHUB_TOKEN }}
