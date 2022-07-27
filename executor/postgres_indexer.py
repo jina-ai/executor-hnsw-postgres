@@ -14,6 +14,9 @@ import numpy as np
 from jina import Document, DocumentArray
 from jina.logging.logger import JinaLogger
 
+from typing import Optional
+import warnings
+
 from .commons import export_dump_streaming  # this is for local testing
 from .postgreshandler import PostgreSQLHandler
 
@@ -36,7 +39,8 @@ class PostgreSQLStorage:
         database: str = 'postgres',
         table: str = 'default_table',
         max_connections=5,
-        traversal_paths: str = '@r',
+        access_paths: str = '@r',
+        traversal_paths: Optional[str] = None,
         return_embeddings: bool = True,
         dry_run: bool = False,
         partitions: int = 128,
@@ -63,7 +67,15 @@ class PostgreSQLStorage:
         ids constraint failing (useful when indexing with shards and
         polling = 'all')
         """
-        self.default_traversal_paths = traversal_paths
+
+        if traversal_paths is not None:
+            warnings.warn("'traversal_paths' will be deprecated in the future, please use 'access_paths'.",
+                          DeprecationWarning,
+                          stacklevel=2)
+            self.default_access_paths = traversal_paths
+        else:
+            self.default_access_paths = access_paths
+
         self.hostname = hostname
         self.port = port
         self.username = username
@@ -115,10 +127,10 @@ class PostgreSQLStorage:
         """
         if docs is None:
             return
-        traversal_paths = parameters.get(
-            'traversal_paths', self.default_traversal_paths
+        access_paths = parameters.get(
+            'access_paths', self.default_access_paths
         )
-        self.handler.add(docs[traversal_paths])
+        self.handler.add(docs[access_paths])
 
     def update(self, docs: DocumentArray, parameters: Dict, **kwargs):
         """Updated document from the database.
@@ -128,10 +140,10 @@ class PostgreSQLStorage:
         """
         if docs is None:
             return
-        traversal_paths = parameters.get(
-            'traversal_paths', self.default_traversal_paths
+        access_paths = parameters.get(
+            'access_paths', self.default_access_paths
         )
-        self.handler.update(docs[traversal_paths])
+        self.handler.update(docs[access_paths])
 
     def cleanup(self, **kwargs):
         """
@@ -153,11 +165,11 @@ class PostgreSQLStorage:
         """
         if docs is None:
             return
-        traversal_paths = parameters.get(
-            'traversal_paths', self.default_traversal_paths
+        access_paths = parameters.get(
+            'access_paths', self.default_access_paths
         )
         soft_delete = parameters.get('soft_delete', False)
-        self.handler.delete(docs[traversal_paths], soft_delete)
+        self.handler.delete(docs[access_paths], soft_delete)
 
     def dump(self, parameters: Dict, **kwargs):
         """Dump the index
@@ -198,12 +210,12 @@ class PostgreSQLStorage:
         """
         if docs is None:
             return
-        traversal_paths = parameters.get(
-            'traversal_paths', self.default_traversal_paths
+        access_paths = parameters.get(
+            'access_paths', self.default_access_paths
         )
 
         self.handler.search(
-            docs[traversal_paths],
+            docs[access_paths],
             return_embeddings=parameters.get(
                 'return_embeddings', self.default_return_embeddings
             ),

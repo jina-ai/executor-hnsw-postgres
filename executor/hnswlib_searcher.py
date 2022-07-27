@@ -11,6 +11,8 @@ from bidict import bidict
 from jina import DocumentArray, Document
 from jina.logging.logger import JinaLogger
 
+import warnings
+
 GENERATOR_DELTA = Generator[
     Tuple[str, Optional[np.ndarray], Optional[datetime]], None, None
 ]
@@ -36,7 +38,8 @@ class HnswlibSearcher:
         ef_query: int = 50,
         max_connection: int = 16,
         dump_path: Optional[str] = None,
-        traversal_paths: str = '@r',
+        access_paths: str = '@r',
+        traversal_paths: Optional[str] = None,
         is_distance: bool = True,
         last_timestamp: datetime = datetime.fromtimestamp(0, timezone.utc),
         num_threads: int = -1,
@@ -56,8 +59,9 @@ class HnswlibSearcher:
             graph (the "M" parameter)
         :param dump_path: The path to the directory from where to load, and where to
             save the index state
-        :param traversal_paths: The default traversal path on docs (used for
+        :param access_paths: The default traversal path on docs (used for
         indexing, search and update), e.g. '@r', '@c', '@r,c'
+        :param traversal_paths: please use access_paths
         :param is_distance: Boolean flag that describes if distance metric need to
         be reinterpreted as similarities.
         :param last_timestamp: the last time we synced into this HNSW index
@@ -67,7 +71,13 @@ class HnswlibSearcher:
         self.metric = metric
         self.dim = dim
         self.max_elements = max_elements
-        self.traversal_paths = traversal_paths
+        if traversal_paths is not None:
+            self.access_paths = traversal_paths
+            warnings.warn("'traversal_paths' will be deprecated in the future, please use 'access_paths'.",
+                          DeprecationWarning,
+                          stacklevel=2)
+        else:
+            self.access_paths = access_paths
         self.ef_construction = ef_construction
         self.ef_query = ef_query
         self.max_connection = max_connection
@@ -115,13 +125,13 @@ class HnswlibSearcher:
             of the same dimension as vectors in the index
         :param parameters: Dictionary with optional parameters that can be used to
             override the parameters set at initialization. Supported keys are
-            `traversal_paths`, `limit` and `ef_query`.
+            `access_paths`, `limit` and `ef_query`.
         """
         if docs is None:
             return
 
-        traversal_paths = parameters.get('traversal_paths', self.traversal_paths)
-        docs_search = docs[traversal_paths]
+        access_paths = parameters.get('access_paths', self.access_paths)
+        docs_search = docs[access_paths]
         if len(docs_search) == 0:
             return
 
@@ -166,13 +176,13 @@ class HnswlibSearcher:
         :param docs: Documents whose `embedding` to index.
         :param parameters: Dictionary with optional parameters that can be used to
             override the parameters set at initialization. The only supported key is
-            `traversal_paths`.
+            `access_paths`.
         """
-        traversal_paths = parameters.get('traversal_paths', self.traversal_paths)
+        access_paths = parameters.get('access_paths', self.access_paths)
         if docs is None:
             return
 
-        docs_to_index = docs[traversal_paths]
+        docs_to_index = docs[access_paths]
         if len(docs_to_index) == 0:
             return
 
@@ -212,13 +222,13 @@ class HnswlibSearcher:
         :param docs: Documents whose `embedding` to update.
         :param parameters: Dictionary with optional parameters that can be used to
             override the parameters set at initialization. The only supported key is
-            `traversal_paths`.
+            `access_paths`.
         """
-        traversal_paths = parameters.get('traversal_paths', self.traversal_paths)
+        access_paths = parameters.get('access_paths', self.access_paths)
         if docs is None:
             return
 
-        docs_to_update = docs[traversal_paths]
+        docs_to_update = docs[access_paths]
         if len(docs_to_update) == 0:
             return
 
