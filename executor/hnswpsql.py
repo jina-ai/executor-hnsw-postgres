@@ -51,7 +51,8 @@ class HNSWPostgresIndexer(Executor):
         max_connection: int = 64,
         is_distance: bool = True,
         num_threads: int = -1,
-        traversal_paths: str = '@r',
+        access_paths: str = '@r',
+        traversal_paths: Optional[str] = None,
         hostname: str = '127.0.0.1',
         port: int = 5432,
         username: str = 'postgres',
@@ -85,8 +86,9 @@ class HNSWPostgresIndexer(Executor):
         similarity
         :param last_timestamp: (HNSW) the last time we synced into this HNSW index
         :param num_threads: (HNSW) nr of threads to use during indexing. -1 is default
-        :param traversal_paths: (PSQL) default traversal paths on docs
+        :param access_paths: (PSQL) default traversal paths on docs
         (used for indexing, delete and update), e.g. '@r', '@c', '@r,c'
+        :param traversal_paths: please use access_paths
         :param hostname: (PSQL) hostname of the machine
         :param port: (PSQL) the port
         :param username: (PSQL) the username to authenticate
@@ -242,7 +244,7 @@ class HNSWPostgresIndexer(Executor):
 
         Keys accepted:
 
-            - 'traversal_paths' (str): traversal path for the docs
+            - 'access_paths' (str): traversal path for the docs
         """
         self._kv_indexer.add(docs, parameters, **kwargs)
 
@@ -255,7 +257,7 @@ class HNSWPostgresIndexer(Executor):
 
         Keys accepted:
 
-            - 'traversal_paths' (str): traversal path for the docs
+            - 'access_paths' (str): traversal path for the docs
         """
         self._kv_indexer.update(docs, parameters, **kwargs)
 
@@ -268,7 +270,7 @@ class HNSWPostgresIndexer(Executor):
 
         Keys accepted:
 
-            - 'traversal_paths' (str): traversal path for the docs
+            - 'access_paths' (str): traversal path for the docs
             - 'soft_delete' (bool, default `True`): whether to perform soft delete
             (doc is marked as empty but still exists in db, for retrieval purposes)
         """
@@ -351,7 +353,7 @@ class HNSWPostgresIndexer(Executor):
         :param parameters: dictionary for parameters for the search operation
 
 
-            - 'traversal_paths' (str): traversal paths for the docs
+            - 'access_paths' (str): traversal paths for the docs
             - 'limit' (int): nr of matches to get per Document
             - 'ef_query' (int): query time accuracy/speed trade-off. High is more
             accurate but slower
@@ -362,10 +364,10 @@ class HNSWPostgresIndexer(Executor):
                 self._vec_indexer.search(docs, parameters)
 
             kv_parameters = copy.deepcopy(parameters)
-            kv_parameters['traversal_paths'] = ','.join(
+            kv_parameters['access_paths'] = ','.join(
                 [
                     path + 'm'
-                    for path in kv_parameters.get('traversal_paths', '@r').split(',')
+                    for path in kv_parameters.get('access_paths', '@r').split(',')
                 ]
             )
             self._kv_indexer.search(docs, kv_parameters)
